@@ -1,0 +1,17 @@
+minimumReleaseAgeExcludePrune: true
+minimumReleaseAgeExclude:
+  - jose@6.2.15
+
+trustPolicy: no-downgrade
+shellEmulator: true
+
+packages:
+  - viewer
+  - playground
+
+# No dependency needs its install script: esbuild ships its binary as an optional dependency.
+allowBuilds:
+  '@parcel/watcher': false
+  esbuild: false
+  unrs-resolver: false
+  vue-demi: false

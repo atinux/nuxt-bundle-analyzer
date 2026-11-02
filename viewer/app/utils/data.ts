@@ -1,0 +1,681 @@
+// Types of the files `nuxt analyze` writes for each run, and what the comparison needs from them.
+
+export interface Run {
+  name: string
+  slug: string
+  startTime: number
+  endTime: number
+  current: boolean
+}
+
+/** The reports `nuxt analyze` writes with Sonda, named after the bundle they describe. */
+export type Env = 'client' | 'nitro'
+export type Metric = 'uncompressed' | 'gzip' | 'brotli'
+
+export interface Sizes {
+  uncompressed: number
+  gzip: number
+  brotli: number
+}
+
+/** The part of Sonda's JSON report used here; see https://sonda.dev/features/json-report. */
+interface SondaReport {
+  resources: Array<Sizes & {
+    kind: 'filesystem' | 'sourcemap' | 'asset' | 'chunk'
+    name: string
+    /** For a `chunk`, the output file it is part of. */
+    parent?: string | null
+  }>
+  /** The import graph. An `entrypoint` connects an output file to the source that starts it. */
+  connections: Array<{
+    kind: 'import' | 'require' | 'dynamic-import' | 'entrypoint' | 'sourcemap'
+    source: string
+    target: string
+  }>
+  /** Packages in the bundle, with every location they were bundled from. */
+  dependencies: Array<{ name: string, paths: string[] }>
+  /** Warnings, such as a loop of imports, with the modules in the loop. */
+  issues: Array<{ type: string, data?: { cycle?: string[] } }>
+}
+
+/** One of the copies of a package bundled from more than one location. */
+export interface PackageCopy extends Sizes {
+  /** Where the copy was bundled from, such as `node_modules/.pnpm/hookable@5.5.3/node_modules/hookable`. */
+  path: string
+  /** The version, when the location names it, as pnpm's does. */
+  version?: string
+  /** Files outside the package that import this copy. */
+  importers: string[]
+}
+
+export type ImportKind = 'import' | 'dynamic-import'
+
+/** What the detail panel shows: one source file, or a package with all its files. */
+export interface Target {
+  kind: 'file' | 'package'
+  id: string
+}
+
+/** A client output file in `nuxt.json`, keyed by its path in the client bundle (for example `_nuxt/entry.js`). */
+interface Chunk {
+  file: string
+  /** The page, layout or component the chunk was split for, relative to the project. */
+  src?: string
+  type: 'js' | 'css' | 'asset'
+  size: number
+  gzip: number
+  brotli: number
+  isEntry?: boolean
+  isDynamicEntry?: boolean
+  imports: string[]
+  dynamicImports: string[]
+  css: string[]
+}
+
+export interface Route {
+  path: string
+  name?: string
+  entries: string[]
+}
+
+interface NuxtData {
+  version: 1
+  routes: Route[]
+  chunks: Record<string, Chunk>
+}
+
+/** A source file's share of a bundle, summed over the output files it ends up in. */
+export interface Source extends Sizes {
+  id: string
+  package?: string
+}
+
+/** A source file's share of one output file. */
+export interface Part extends Sizes {
+  id: string
+  package?: string
+  /** The output file, as Sonda names it. */
+  asset: string
+}
+
+export interface Bundle extends Sizes {
+  sources: Source[]
+  parts: Part[]
+  /** Output files, as Sonda names them. */
+  assets: Array<Sizes & { name: string }>
+  /** For each source, the sources that import it and how. */
+  importers: Map<string, Map<string, ImportKind>>
+  /** Sources that start an output file. */
+  entries: Set<string>
+  /** Packages bundled from more than one location, such as two versions, with each copy. */
+  duplicates: Map<string, PackageCopy[]>
+  /** Loops of imports, each starting from its first file, which the last one imports again. */
+  cycles: string[][]
+}
+
+export interface RunData {
+  run: Run
+  bundles: Partial<Record<Env, Bundle>>
+  routes: Route[]
+  chunks: Record<string, Chunk>
+}
+
+const PACKAGE_RE = /^node_modules\/((?:@[^/]+\/)?[^/]+)/
+const PARENT_DIRS_RE = /^(?:\.\.\/)+/
+/** The version in a pnpm location, such as `.pnpm/@vue+shared@3.5.44/` or `.pnpm/unctx@3.0.1_magic-string@1.4.3/`. */
+const PNPM_VERSION_RE = /\.pnpm\/@?[^@/]+@([^_/]+)/
+
+/**
+ * Sonda names sources relative to the directory `nuxt analyze` ran in. Dependencies are named
+ * after their package, wherever the package manager put them, so runs compare by package.
+ */
+function normalizeId(name: string): string {
+  let path = name.replaceAll('\\', '/')
+  // Nuxt's virtual modules carry their encoded path, such as `virtual:nuxt:.nuxt%2Ffetch.mjs`.
+  const virtual = path.indexOf('virtual:')
+  if (virtual !== -1) {
+    path = decodeURIComponent(path.slice(virtual).replace(/^virtual:nuxt:/, ''))
+  }
+  const buildDir = path.lastIndexOf('.nuxt/')
+  if (buildDir !== -1) {
+    // Sonda resolves the client build's own sources against the build directory, so
+    // `.nuxt/app/pages/index.vue` is `app/pages/index.vue`; files Nuxt generates stay in `.nuxt`.
+    const rest = path.slice(buildDir + '.nuxt/'.length)
+    return virtual !== -1 || rest.startsWith('dist/')
+      ? `.nuxt/${rest}`
+      : rest
+  }
+  const modules = path.lastIndexOf('node_modules/')
+  if (modules !== -1) {
+    return path.slice(modules)
+  }
+  return path.replace(PARENT_DIRS_RE, '')
+}
+
+function toBundle(report: SondaReport): Bundle {
+  const bundle: Bundle = {
+    uncompressed: 0,
+    gzip: 0,
+    brotli: 0,
+    sources: [],
+    parts: [],
+    assets: [],
+    importers: new Map(),
+    entries: new Set(),
+    duplicates: new Map(),
+    cycles: [],
+  }
+  const sources = new Map<string, Source>()
+
+  // Sources name every copy of a package the same, so each copy is told apart by its location in
+  // Sonda's names, the longest one that matches as one location can be inside another.
+  const copies = (report.dependencies ?? []).filter(dependency => dependency.paths.length > 1).flatMap(dependency => dependency.paths.map(path => ({
+    name: dependency.name,
+    copy: {
+      path: path.replace(PARENT_DIRS_RE, ''),
+      version: PNPM_VERSION_RE.exec(path)?.[1],
+      uncompressed: 0,
+      gzip: 0,
+      brotli: 0,
+      importers: new Set<string>(),
+    },
+  })))
+  const copyOf = (name: string) => {
+    const path = name.replaceAll('\\', '/')
+    let found: typeof copies[number] | undefined
+    for (const entry of copies) {
+      if (path.includes(`${entry.copy.path}/`) && entry.copy.path.length > (found?.copy.path.length ?? 0)) {
+        found = entry
+      }
+    }
+    return found?.copy
+  }
+  for (const resource of report.resources) {
+    const sizes = { uncompressed: resource.uncompressed, gzip: resource.gzip ?? 0, brotli: resource.brotli ?? 0 }
+    if (resource.kind === 'asset') {
+      bundle.assets.push({ name: resource.name, ...sizes })
+      bundle.uncompressed += sizes.uncompressed
+      bundle.gzip += sizes.gzip
+      bundle.brotli += sizes.brotli
+    }
+    else if (resource.kind === 'chunk') {
+      const id = normalizeId(resource.name)
+      const pkg = packageOf(id)
+      bundle.parts.push({
+        id,
+        package: pkg,
+        asset: resource.parent ?? '',
+        ...sizes,
+      })
+      const copy = copyOf(resource.name)
+      if (copy) {
+        copy.uncompressed += sizes.uncompressed
+        copy.gzip += sizes.gzip
+        copy.brotli += sizes.brotli
+      }
+      const source = sources.get(id) ?? {
+        id,
+        package: pkg,
+        uncompressed: 0,
+        gzip: 0,
+        brotli: 0,
+      }
+      source.uncompressed += sizes.uncompressed
+      source.gzip += sizes.gzip
+      source.brotli += sizes.brotli
+      sources.set(id, source)
+    }
+  }
+  bundle.sources = [
+    ...sources.values(),
+  ]
+
+  for (const connection of report.connections ?? []) {
+    // The parts of a Vue component, such as `index.vue?vue&type=script`, count as the component itself.
+    const target = normalizeId(connection.target.split('?')[0]!)
+    if (connection.kind === 'entrypoint') {
+      bundle.entries.add(target)
+      continue
+    }
+    const source = normalizeId(connection.source.split('?')[0]!)
+    if (source === target || connection.kind === 'sourcemap') {
+      continue
+    }
+    const copy = copyOf(connection.target)
+    if (copy && copyOf(connection.source) !== copy) {
+      copy.importers.add(source)
+    }
+    const importers = bundle.importers.get(target) ?? new Map<string, ImportKind>()
+    // A static import loads the file before the importer runs, so it wins over a dynamic one.
+    if (importers.get(source) !== 'import') {
+      importers.set(source, connection.kind === 'dynamic-import'
+        ? 'dynamic-import'
+        : 'import')
+    }
+    bundle.importers.set(target, importers)
+  }
+
+  for (const { name, copy } of copies) {
+    bundle.duplicates.set(name, [
+      ...bundle.duplicates.get(name) ?? [],
+      {
+        ...copy,
+        importers: [...copy.importers].sort(),
+      },
+    ])
+  }
+
+  const cycles = new Map<string, string[]>()
+  for (const issue of report.issues ?? []) {
+    if (issue.type !== 'circular-import' || !issue.data?.cycle) {
+      continue
+    }
+    // Sonda closes the loop with its first module, and lists the parts of a Vue component apart.
+    const cycle = issue.data.cycle.map(name => normalizeId(name.split('?')[0]!)).filter((id, index, ids) => id !== ids[index - 1])
+    if (cycle.length > 1 && cycle.at(-1) === cycle[0]) {
+      cycle.pop()
+    }
+    if (cycle.length < 2) {
+      continue
+    }
+    // The same loop can be reported from any of its files, so it starts from the first in order.
+    const start = cycle.indexOf([...cycle].sort()[0]!)
+    const loop = [
+      ...cycle.slice(start),
+      ...cycle.slice(0, start),
+    ]
+    cycles.set(loop.join('\n'), loop)
+  }
+  bundle.cycles = [
+    ...cycles.values(),
+  ]
+  return bundle
+}
+
+/**
+ * The chain of imports that leads to a source, starting where the chain begins: the bundle's
+ * entry, or a file nothing is recorded to import. Sonda records the imports Nuxt's virtual modules
+ * make, such as `#build/routes` loading each page, but not the imports of them, so chains through
+ * the router start at those modules. The chain with the fewest imports on demand wins, as it is
+ * the reason a file is loaded up front, then the shortest one. Each step says how the previous one
+ * imports it.
+ */
+export function importChain(bundle: Bundle, id: string): { id: string, kind?: ImportKind }[] {
+  const next = new Map<string, { id: string, kind: ImportKind }>()
+  const visited = new Set([id])
+  // Each round searches through static imports only; imports on demand wait for the next round.
+  let round = [id]
+  while (round.length > 0) {
+    const onDemand: [importer: string, imported: string][] = []
+    const queue = [...round]
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      const importers = bundle.importers.get(current)
+      if (!importers?.size) {
+        const chain: { id: string, kind?: ImportKind }[] = [
+          { id: current },
+        ]
+        for (let step = next.get(current); step; step = next.get(step.id)) {
+          chain.push({ id: step.id, kind: step.kind })
+        }
+        return chain
+      }
+      for (const [importer, kind] of importers) {
+        if (visited.has(importer)) {
+          continue
+        }
+        if (kind === 'dynamic-import') {
+          onDemand.push([importer, current])
+          continue
+        }
+        visited.add(importer)
+        next.set(importer, { id: current, kind })
+        queue.push(importer)
+      }
+    }
+    round = []
+    for (const [importer, imported] of onDemand) {
+      if (!visited.has(importer)) {
+        visited.add(importer)
+        next.set(importer, { id: imported, kind: 'dynamic-import' })
+        round.push(importer)
+      }
+    }
+  }
+  // Every file that leads here is imported by another one in a cycle.
+  return []
+}
+
+const PULL_RE = /^\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/
+
+/** The pull request the hosted viewer shows, from its path, such as `/nuxt/nuxt.com/pull/1234`. */
+export function hostedPull() {
+  const [, owner, repo, pull] = PULL_RE.exec(location.pathname) ?? []
+  return owner && repo && pull
+    ? {
+        owner,
+        repo,
+        pull: Number(pull),
+      }
+    : undefined
+}
+
+/** Where the runs are: `/data` from `nuxt-bundle-analyzer`, or the hosted viewer's store of a pull request. */
+function dataBase() {
+  const pull = hostedPull()
+  return pull
+    ? `/api/reports/${pull.owner}/${pull.repo}/pull/${pull.pull}`
+    : '/data'
+}
+
+async function fetchJson<T>(url: string): Promise<T | undefined> {
+  const response = await fetch(url)
+  return response.ok
+    ? response.json() as Promise<T>
+    : undefined
+}
+
+export function fetchRuns() {
+  return fetchJson<Run[]>(`${dataBase()}/runs.json`).then(runs => runs ?? [])
+}
+
+export async function fetchRun(run: Run): Promise<RunData> {
+  const base = `${dataBase()}/${encodeURIComponent(run.slug)}`
+  const envs = ['client', 'nitro'] as const
+  const [reports, nuxt] = await Promise.all([
+    Promise.all(envs.map(env => fetchJson<SondaReport>(`${base}/${env}.json`))),
+    fetchJson<NuxtData>(`${base}/nuxt.json`),
+  ])
+  const data: RunData = {
+    run,
+    bundles: {},
+    routes: nuxt?.routes ?? [],
+    chunks: nuxt?.chunks ?? {},
+  }
+  envs.forEach((env, index) => {
+    const report = reports[index]
+    if (report) {
+      data.bundles[env] = toBundle(report)
+    }
+  })
+  return data
+}
+
+/** Files loaded before a route renders: its entries and everything they import statically. */
+function routeFiles(data: RunData, route: Route): Chunk[] {
+  const loaded = new Map<string, Chunk>()
+  const queue = [...route.entries]
+  while (queue.length > 0) {
+    const file = queue.pop()!
+    const chunk = data.chunks[file]
+    if (loaded.has(file) || !chunk) {
+      continue
+    }
+    loaded.set(file, chunk)
+    queue.push(...chunk.imports, ...chunk.css)
+  }
+  return [
+    ...loaded.values(),
+  ]
+}
+
+type ChunkKind = 'entry' | 'page' | 'layout' | 'component' | 'shared' | 'nuxt' | 'route' | 'app' | 'nitro'
+
+export const chunkKindLabels: Record<ChunkKind, string> = {
+  entry: 'Entry',
+  page: 'Page',
+  layout: 'Layout',
+  component: 'Component',
+  shared: 'Shared',
+  nuxt: 'Nuxt',
+  // Nitro's server routes, such as `server/api/hello.ts`, its build of the Vue app, and its runtime.
+  route: 'Server Route',
+  app: 'Vue App',
+  nitro: 'Nitro',
+}
+
+/** A JavaScript output file of the client or Nitro build, with what it is made of. */
+export interface ChunkInfo extends Sizes {
+  file: string
+  kind: ChunkKind
+  src?: string
+  /** Stylesheets loaded with the chunk. */
+  css: Sizes
+  /** Source files in the chunk, with their share of its size. */
+  contents: Part[]
+  /**
+   * Routes that load the chunk before rendering, `all` when every route does, `lazy` when only
+   * loaded on demand. Nitro's chunks are not loaded by routes in the browser, so they have none.
+   */
+  loadedBy?: 'all' | 'lazy' | string[]
+  imports: string[]
+  dynamicImports: string[]
+}
+
+export interface PageInfo {
+  /** The page component, such as `app/pages/blog/[slug].vue`. */
+  file: string
+  chunk: ChunkInfo
+  /** The route the page renders, unless it is a parent page that only renders its children. */
+  route?: string
+  /** Routes that render the page: one for a page, several for a parent page with children. */
+  routes: string[]
+  /** What its route loads before rendering, when the page is a route of its own. */
+  initial?: Sizes
+  /** Other chunks its route loads before rendering, apart from those every route loads. */
+  loads: ChunkInfo[]
+  /** Chunks the page loads on demand, such as lazy components. */
+  lazy: ChunkInfo[]
+}
+
+export type SourceKind = 'component' | 'file' | 'dependency' | 'nuxt'
+
+/** The package a source is from, such as `vue` for `node_modules/vue/dist/vue.js`. */
+export function packageOf(id: string): string | undefined {
+  return PACKAGE_RE.exec(id)?.[1]
+}
+
+/** Groups a source as one of the project's components or files, a dependency, or code Nuxt generates. */
+export function sourceKind(part: Pick<Part, 'id' | 'package'>): SourceKind {
+  if (part.package) {
+    return 'dependency'
+  }
+  if (part.id.startsWith('.nuxt/') || part.id.startsWith('[') || part.id.startsWith('(virtual)')) {
+    return 'nuxt'
+  }
+  return part.id.endsWith('.vue')
+    ? 'component'
+    : 'file'
+}
+
+const PAGES_RE = /(?:^|\/)pages\//
+const LAYOUTS_RE = /(?:^|\/)layouts\//
+
+function chunkKind(chunk: Chunk): ChunkKind {
+  if (chunk.isEntry) {
+    return 'entry'
+  }
+  if (!chunk.src) {
+    return 'shared'
+  }
+  if (chunk.src.includes('node_modules/')) {
+    return 'nuxt'
+  }
+  return PAGES_RE.test(chunk.src)
+    ? 'page'
+    : LAYOUTS_RE.test(chunk.src)
+      ? 'layout'
+      : 'component'
+}
+
+/** The JavaScript chunks of the client build, largest first. */
+export function clientChunks(data: RunData): ChunkInfo[] {
+  const loaded = data.routes.map(route => ({
+    path: route.path,
+    files: new Set(routeFiles(data, route).map(chunk => chunk.file)),
+  }))
+  const parts = data.bundles.client?.parts ?? []
+  const chunks: ChunkInfo[] = []
+  for (const chunk of Object.values(data.chunks)) {
+    if (chunk.type !== 'js') {
+      continue
+    }
+    const css = { uncompressed: 0, gzip: 0, brotli: 0 }
+    for (const file of chunk.css) {
+      css.uncompressed += data.chunks[file]?.size ?? 0
+      css.gzip += data.chunks[file]?.gzip ?? 0
+      css.brotli += data.chunks[file]?.brotli ?? 0
+    }
+    // Sonda names output files from the directory `nuxt analyze` ran in, `nuxt.json` from the client build.
+    const contents = new Map<string, Part>()
+    for (const part of parts) {
+      if (part.asset.endsWith(`/${chunk.file}`)) {
+        const merged = contents.get(part.id) ?? {
+          ...part,
+          uncompressed: 0,
+          gzip: 0,
+          brotli: 0,
+        }
+        merged.uncompressed += part.uncompressed
+        merged.gzip += part.gzip
+        merged.brotli += part.brotli
+        contents.set(part.id, merged)
+      }
+    }
+    const routes = loaded.filter(route => route.files.has(chunk.file)).map(route => route.path)
+    chunks.push({
+      file: chunk.file,
+      kind: chunkKind(chunk),
+      // Nuxt's own chunks, such as its entry, are named after their package rather than its location.
+      src: chunk.src?.includes('node_modules/')
+        ? normalizeId(chunk.src).slice('node_modules/'.length)
+        : chunk.src,
+      uncompressed: chunk.size,
+      gzip: chunk.gzip,
+      brotli: chunk.brotli,
+      css,
+      contents: [
+        ...contents.values(),
+      ].sort((a, b) => b.uncompressed - a.uncompressed),
+      loadedBy: routes.length === 0
+        ? 'lazy'
+        : routes.length === loaded.length
+          ? 'all'
+          : routes,
+      imports: chunk.imports,
+      dynamicImports: chunk.dynamicImports,
+    })
+  }
+  return chunks.sort((a, b) => b.uncompressed - a.uncompressed)
+}
+
+const SCRIPT_RE = /\.[cm]?js$/
+
+/** Groups a Nitro output file by the folder Nitro writes it to. */
+function serverChunkKind(file: string): ChunkKind {
+  if (!file.includes('/chunks/')) {
+    return 'entry'
+  }
+  if (file.includes('/chunks/routes/')) {
+    // Server routes, such as `server/api/hello.ts`, and the renderer of the Vue app.
+    return 'route'
+  }
+  if (file.includes('/chunks/build/') || file.includes('/chunks/virtual/')) {
+    // The server build of the Vue app, with its entry in `virtual/entry.mjs`.
+    return 'app'
+  }
+  return file.includes('/chunks/nitro/')
+    ? 'nitro'
+    : 'shared'
+}
+
+/** The JavaScript output files of the Nitro build, largest first. */
+export function serverChunks(data: RunData): ChunkInfo[] {
+  const bundle = data.bundles.nitro
+  if (!bundle) {
+    return []
+  }
+  return bundle.assets.filter(asset => SCRIPT_RE.test(asset.name)).map((asset) => {
+    const contents = new Map<string, Part>()
+    for (const part of bundle.parts) {
+      if (part.asset === asset.name) {
+        const merged = contents.get(part.id) ?? {
+          ...part,
+          uncompressed: 0,
+          gzip: 0,
+          brotli: 0,
+        }
+        merged.uncompressed += part.uncompressed
+        merged.gzip += part.gzip
+        merged.brotli += part.brotli
+        contents.set(part.id, merged)
+      }
+    }
+    return {
+      file: asset.name,
+      kind: serverChunkKind(asset.name),
+      uncompressed: asset.uncompressed,
+      gzip: asset.gzip,
+      brotli: asset.brotli,
+      css: { uncompressed: 0, gzip: 0, brotli: 0 },
+      contents: [
+        ...contents.values(),
+      ].sort((a, b) => b.uncompressed - a.uncompressed),
+      imports: [],
+      dynamicImports: [],
+    }
+  }).sort((a, b) => b.uncompressed - a.uncompressed)
+}
+
+/** Every page component, with the routes it renders and what they load. */
+export function pages(data: RunData, chunks: ChunkInfo[]): PageInfo[] {
+  return chunks.filter(chunk => chunk.kind === 'page').map((chunk) => {
+    const routes = data.routes.filter(route => route.entries.includes(chunk.file))
+    const own = routes.find(route => route.entries.at(-1) === chunk.file)
+    const files = new Set(own
+      ? routeFiles(data, own).map(file => file.file)
+      : chunk.imports)
+    return {
+      file: chunk.src!,
+      chunk,
+      route: own?.path,
+      routes: routes.map(route => route.path),
+      initial: own && routeSize(data, own),
+      loads: chunks.filter(other => other !== chunk && other.loadedBy !== 'all' && files.has(other.file)),
+      lazy: chunks.filter(other => chunk.dynamicImports.includes(other.file)),
+    }
+  }).sort((a, b) => a.file.localeCompare(b.file))
+}
+
+/** JavaScript and CSS loaded before a route renders, sized from the files on disk that `nuxt.json` records. */
+export function routeSize(data: RunData, route: Route): Sizes {
+  const sizes: Sizes = { uncompressed: 0, gzip: 0, brotli: 0 }
+  for (const chunk of routeFiles(data, route)) {
+    sizes.uncompressed += chunk.size
+    sizes.gzip += chunk.gzip
+    sizes.brotli += chunk.brotli
+  }
+  return sizes
+}
+
+export function formatBytes(bytes: number): string {
+  const abs = Math.abs(bytes)
+  if (abs < 1000) {
+    return `${bytes} B`
+  }
+  if (abs < 1000 * 1000) {
+    return `${(bytes / 1000).toFixed(abs < 10_000
+      ? 2
+      : 1)} kB`
+  }
+  return `${(bytes / 1000 / 1000).toFixed(2)} MB`
+}
+
+export function formatDelta(bytes: number): string {
+  if (bytes === 0) {
+    return '±0 B'
+  }
+  return `${bytes > 0
+    ? '+'
+    : '−'}${formatBytes(Math.abs(bytes))}`
+}

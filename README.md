@@ -1,0 +1,113 @@
+# nuxt-bundle-analyzer
+
+See what ends up in your Nuxt bundles: each page with its size, each chunk with the files and dependencies in it, duplicate packages, circular imports, and what changed between two builds.
+
+Sizes are measured by [Sonda](https://sonda.dev) on the final output, after minification and compression.
+
+## Usage
+
+Run this in your Nuxt project:
+
+```bash
+npx nuxt-bundle-analyzer
+```
+
+It builds your app for analysis and opens the analyzer at http://localhost:3000. You don't need to install or configure anything.
+
+## Compare two builds
+
+Name each run, then open **Compare**:
+
+```bash
+npx nuxt-bundle-analyzer --name=before
+# make your change
+npx nuxt-bundle-analyzer --name=after
+```
+
+Compare shows the size difference for each route, package, and file.
+
+## With `nuxi analyze`
+
+To analyze every `nuxi analyze` run instead, add the module:
+
+```bash
+npx nuxt module add nuxt-bundle-analyzer
+npx nuxt analyze --no-serve
+npx nuxt-bundle-analyzer serve
+```
+
+Set `NUXT_BUNDLE_ANALYZER_NAME` to name these runs, or `bundleAnalyzer.name` in `nuxt.config`.
+
+## Options
+
+| Option | Description |
+| --- | --- |
+| `--name <name>` | Name of the run, so you can keep several and compare them. Defaults to `default`. |
+| `--no-serve` | Write the reports without opening the analyzer. |
+| `--prerender` | Prerender routes while analyzing. |
+| `--extends <layer>` | Extend the app with a layer, as with `nuxi`. |
+| `serve` | Open the analyzer on the runs you already have, without building. |
+| `PORT` | Port of the analyzer. Defaults to `3000`. |
+
+Runs are kept in `node_modules/.cache/nuxt-bundle-analyzer`.
+
+> [!WARNING]
+> The analysis build turns on source maps. Run `nuxt build` before you deploy.
+
+## Comparisons on pull requests
+
+A hosted viewer can show the comparison of a pull request, so a bot comment can link to it. GitHub Actions uploads the two runs with its OpenID Connect token: the viewer checks which repository and workflow the token comes from, so the repository needs no secret.
+
+Pull requests from forks can't get that token, so the upload runs in a workflow triggered by `workflow_run`, which runs from the default branch:
+
+1. The `pull_request` workflow analyzes both builds and uploads them as an artifact:
+
+   ```yaml
+   - run: npx nuxt-bundle-analyzer --name=pr --no-serve
+   - uses: actions/upload-artifact@v7
+     with:
+       name: bundle-pr
+       path: node_modules/.cache/nuxt-bundle-analyzer/pr
+   ```
+
+   Do the same for the base commit with `--name=base`.
+
+2. The `workflow_run` workflow downloads both into `runs/base` and `runs/pr`, then uploads them:
+
+   ```yaml
+   permissions:
+     actions: read
+     id-token: write
+     issues: write
+
+   steps:
+     - id: bundle
+       run: npx nuxt-bundle-analyzer upload --runs runs --pr "$PR_NUMBER" --url https://bundle.nuxt.dev
+   ```
+
+   The step's `url` output links to the comparison, such as `https://bundle.nuxt.dev/nuxt/nuxt.com/pull/1234?view=compare&base=base&run=pr`. Add it to the comment.
+
+Each upload replaces the previous one for that pull request.
+
+## Hosting the viewer
+
+The viewer is the Nuxt app in `viewer/`. Deploy it on Vercel with `viewer` as the root directory, and connect a Blob store to the project. Then set which workflows may upload, as `owner/repo/.github/workflows/<file>@<ref>`:
+
+```bash
+NUXT_OIDC_ALLOWED_WORKFLOWS=nuxt/nuxt.com/.github/workflows/bundle-size-comment.yml@refs/heads/main
+```
+
+Only a workflow on that ref can upload, so a pull request that edits the workflow can't. Uploads are stored under the repository named in the token, whatever the request says. The viewer checks every file before storing it, as the reports come from a build of the pull request's code.
+
+Stored reports are public: allow only public repositories.
+
+## Development
+
+```bash
+pnpm install
+pnpm build        # the viewer, the module and the command
+pnpm test
+cd playground && node ../dist/cli.mjs
+```
+
+Run `pnpm dev:viewer` with `ANALYZE_SERVER` pointing at a running `nuxt-bundle-analyzer serve` to work on the viewer.
