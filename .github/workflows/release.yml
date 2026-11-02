@@ -1,0 +1,48 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # npm's trusted publishing trades the job's OpenID Connect token for a short-lived publish token,
+      # so the repository stores no npm token. It also signs the package's provenance.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with:
+          runtime: node@24
+          cache: true
+          require-lockfile: true
+      - name: Check the tag matches the version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match version $version in package.json."
+            exit 1
+          fi
+      - name: Check npm supports trusted publishing
+        # Trusted publishing needs npm 11.5.1 or later.
+        run: node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) { console.error('::error::npm ' + process.argv[1] + ' cannot use trusted publishing; it needs 11.5.1 or later.'); process.exit(1) }" "$(npm --version)"
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      # `prepack` builds the package first.
+      - run: npm publish --access public

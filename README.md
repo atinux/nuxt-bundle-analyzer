@@ -114,3 +114,17 @@ cd playground && node ../dist/cli.mjs
 ```
 
 Run `pnpm dev:viewer` with `ANALYZE_SERVER` pointing at a running `nuxt-bundle-analyzer serve` to work on the viewer.
+
+## Releasing
+
+Releases are published to npm from GitHub Actions with [trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token is stored. To release:
+
+1. Bump `version` in `package.json` and commit it to `main`.
+2. Tag the commit with that version and push the tag:
+
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+The `release` workflow checks that the tag matches the version, runs the checks, and publishes the package with provenance.
