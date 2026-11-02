@@ -127,4 +127,4 @@ Releases are published to npm from GitHub Actions with [trusted publishing](http
    git push origin v0.1.0
    ```
 
-The `release` workflow checks that the tag matches the version, runs the checks, and publishes the package with provenance.
+The `release` workflow waits for a maintainer to approve the run in the `npm` environment. It then checks that the tag matches the version, runs the checks, and stages the version on npm with provenance. The version goes live once a maintainer approves it with 2FA, in the **Staged Packages** tab on npmjs.com.

@@ -17,6 +17,9 @@ jobs:
     name: publish to npm
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The trusted publisher on npm is bound to this environment, which also asks a maintainer to
+    # approve the run and only allows `v*` tags.
+    environment: npm
     permissions:
       contents: read
       # npm's trusted publishing trades the job's OpenID Connect token for a short-lived publish token,
@@ -38,11 +41,13 @@ jobs:
             echo "::error::The tag $GITHUB_REF_NAME does not match version $version in package.json."
             exit 1
           fi
-      - name: Check npm supports trusted publishing
-        # Trusted publishing needs npm 11.5.1 or later.
-        run: node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) { console.error('::error::npm ' + process.argv[1] + ' cannot use trusted publishing; it needs 11.5.1 or later.'); process.exit(1) }" "$(npm --version)"
+      - name: Check npm supports staged publishing
+        # Staged publishing with trusted publishing needs npm 11.15.0 or later.
+        run: node -e "const [major, minor] = process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && minor < 15)) { console.error('::error::npm ' + process.argv[1] + ' cannot stage a publish; it needs 11.15.0 or later.'); process.exit(1) }" "$(npm --version)"
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      # `prepack` builds the package first.
-      - run: npm publish --access public
+      # Stages the version on npm, built by `prepack`. It goes live once a maintainer approves it
+      # with 2FA, in the Staged Packages tab on npmjs.com or with `npm stage approve`.
+      - run: npm stage publish
+      - run: echo "Staged nuxt-bundle-analyzer@${GITHUB_REF_NAME#v}. Approve it in the Staged Packages tab on npmjs.com to publish it." >> "$GITHUB_STEP_SUMMARY"
