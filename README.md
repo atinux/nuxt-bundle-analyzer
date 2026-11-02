@@ -4,6 +4,9 @@ See what ends up in your Nuxt bundles: each page with its size, each chunk with 
 
 Sizes are measured by [Sonda](https://sonda.dev) on the final output, after minification and compression.
 
+> [!NOTE]
+> This package is experimental. Its options, the files it writes, and the upload format can change between releases.
+
 ## Usage
 
 Run this in your Nuxt project:

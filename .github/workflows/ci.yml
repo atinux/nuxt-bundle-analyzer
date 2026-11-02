@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: lint, typecheck and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # Installs the pnpm version `packageManager` pins, Node.js, and the dependencies from the lockfile.
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with:
+          runtime: node@24
+          cache: true
+          require-lockfile: true
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  analyze:
+    name: analyze the playground
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with:
+          runtime: node@24
+          cache: true
+          require-lockfile: true
+      - run: pnpm build
+      # Builds a real Nuxt app with the command, which is what the unit tests cannot cover.
+      - name: Analyze the playground
+        working-directory: playground
+        run: node ../dist/cli.mjs --name=ci --no-serve
+      - name: Check the run has every report
+        working-directory: playground
+        run: |
+          for file in client.json nitro.json nuxt.json meta.json; do
+            test -s "node_modules/.cache/nuxt-bundle-analyzer/ci/$file" || { echo "::error::The run has no $file."; exit 1; }
+          done
+          node -e "const data = require('./node_modules/.cache/nuxt-bundle-analyzer/ci/nuxt.json'); if (!data.routes.length) { console.error('::error::nuxt.json lists no routes.'); process.exit(1) }"

@@ -3,6 +3,18 @@ minimumReleaseAgeExclude:
   - jose@6.2.15
 
 trustPolicy: no-downgrade
+
+# These releases have no provenance attestation while other releases of the same packages do,
+# which pnpm reads as a trust downgrade. They are published by Vercel's and npm's own release
+# pipelines: `@vercel/oidc` and the two CLI packages come with `@vercel/blob`, which the viewer
+# stores reports with, and `semver@6` comes with Babel through Nuxt. Only these exact versions are
+# exempt, so a later release without provenance is still checked.
+trustPolicyExclude:
+  - '@vercel/oidc@3.8.10'
+  - '@vercel/cli-config@0.3.1'
+  - '@vercel/cli-exec@1.0.1'
+  - semver@6.3.1
+
 shellEmulator: true
 
 packages:
