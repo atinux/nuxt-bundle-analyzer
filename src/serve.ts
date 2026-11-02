@@ -48,15 +48,21 @@ export async function serve(options: ServeOptions): Promise<string> {
   }
 
   const server = createServer(async (request, response) => {
+    // `URL` resolves `..` segments, so paths below cannot leave the directories they are joined to.
+    const { pathname } = new URL(request.url ?? '/', 'http://localhost')
     const send = (status: number, body: string | Buffer, type = 'text/plain; charset=utf-8') => {
-      response.writeHead(status, { 'content-type': type })
+      // Built files are named after their contents, so they never change; everything else, such as
+      // the page and the runs, is checked again, so a new build or a new run shows on reload.
+      const immutable = status === 200 && pathname.startsWith('/_nuxt/')
+      response.writeHead(status, {
+        'content-type': type,
+        'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+      })
       response.end(body)
     }
     if (!isAllowed(request.headers.host)) {
       return send(403, 'Forbidden: this host is not allowed.')
     }
-    // `URL` resolves `..` segments, so paths below cannot leave the directories they are joined to.
-    const { pathname } = new URL(request.url ?? '/', 'http://localhost')
 
     if (pathname === '/data/runs.json') {
       const runs = await listRuns(options.runsDir)
