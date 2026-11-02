@@ -1,7 +1,7 @@
 {
   "name": "nuxt-bundle-analyzer",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "packageManager": "pnpm@12.0.0",
   "description": "See what ends up in your Nuxt bundles: pages, chunks, duplicate packages, circular imports, and what changed between two builds.",
   "license": "MIT",
@@ -26,7 +26,8 @@
     "dev:viewer": "pnpm --filter viewer dev",
     "lint": "eslint .",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit && pnpm --filter viewer typecheck"
+    "typecheck": "tsc --noEmit && pnpm --filter viewer typecheck",
+    "prepack": "pnpm build"
   },
   "peerDependencies": {
     "nuxt": "^3.17.0 || ^4.0.0"
