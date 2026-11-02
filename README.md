@@ -117,14 +117,9 @@ Run `pnpm dev:viewer` with `ANALYZE_SERVER` pointing at a running `nuxt-bundle-a
 
 ## Releasing
 
-Releases are published to npm from GitHub Actions with [trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token is stored. To release:
+Releases go through [uppt](https://github.com/danielroe/uppt) and npm [trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token is stored:
 
-1. Bump `version` in `package.json` and commit it to `main`.
-2. Tag the commit with that version and push the tag:
-
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-
-The `release` workflow waits for a maintainer to approve the run in the `npm` environment. It then checks that the tag matches the version, runs the checks, and stages the version on npm with provenance. The version goes live once a maintainer approves it with 2FA, in the **Staged Packages** tab on npmjs.com.
+1. Every push to `main` opens or updates a draft release PR, with the version bump and changelog from conventional commits.
+2. Merging that PR tags the release, creates the GitHub release, and builds the package.
+3. The publish job waits for a maintainer to approve it in the `npm` environment, then stages the version on npm with provenance.
+4. The version goes live once a maintainer approves it with 2FA, in the **Staged Packages** tab on npmjs.com.
