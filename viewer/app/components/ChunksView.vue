@@ -16,7 +16,7 @@ const emit = defineEmits<{
   inspect: [target: Target]
 }>()
 
-const groupBy = ref<'chunk' | 'file'>('chunk')
+const groupBy = ref<'chunk' | 'file' | 'city'>('chunk')
 const expanded = ref(new Set<string>())
 function toggle(file: string) {
   expanded.value.has(file)
@@ -151,11 +151,15 @@ function fileLoadedBy(file: FileRow) {
 <template>
   <div class="flex items-center justify-between gap-3">
     <p class="text-sm text-muted">
-      {{ groupBy === 'chunk' ? `Every JavaScript file of the ${env === 'client' ? 'client' : 'Nitro server'} build, and the files and dependencies in it.` : 'Every file of your project, and the chunks it ends up in.' }}
+      {{ groupBy === 'chunk'
+        ? `Every JavaScript file of the ${env === 'client' ? 'client' : 'Nitro server'} build, and the files and dependencies in it.`
+        : groupBy === 'file'
+          ? 'Every file of your project, and the chunks it ends up in.'
+          : 'Each chunk is a plot, and each file or package in it a building. Drag to turn, scroll to zoom.' }}
     </p>
     <UTabs
       v-model="groupBy"
-      :items="[{ label: 'By Chunk', value: 'chunk' }, { label: 'By File', value: 'file' }]"
+      :items="[{ label: 'By Chunk', value: 'chunk' }, { label: 'By File', value: 'file' }, { label: '3D', value: 'city' }]"
       :content="false"
       size="xs"
     />
@@ -196,6 +200,17 @@ function fileLoadedBy(file: FileRow) {
       No chunks match this search. Clear it to see every chunk.
     </li>
   </ul>
+
+  <!-- Three.js only loads with this view. -->
+  <LazyChunksCity
+    v-else-if="groupBy === 'city'"
+    :chunks="chunks"
+    :env="env"
+    :metric="metric"
+    :search="search"
+    @inspect="target => emit('inspect', target)"
+    @open-chunk="showChunk"
+  />
 
   <div v-else class="rounded-lg ring ring-default">
     <section v-for="group in folders" :key="group.folder" class="border-b border-default last:border-0">
