@@ -1,7 +1,7 @@
 {
   "name": "nuxt-bundle-analyzer",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packageManager": "pnpm@12.0.0",
   "description": "See what ends up in your Nuxt bundles: pages, chunks, duplicate packages, circular imports, and what changed between two builds.",
   "license": "MIT",
