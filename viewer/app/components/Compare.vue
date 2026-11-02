@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Env, Metric, RunData, Source, Target } from '~/utils/data'
-import { formatBytes, formatDelta, routeSize } from '~/utils/data'
+import type { ChunkInfo, Env, Metric, RunData, Source, Target } from '~/utils/data'
+import { clientChunks, formatBytes, formatDelta, locationChanges, routeChanges, routeSize } from '~/utils/data'
 
 const props = defineProps<{
   base: RunData
@@ -103,6 +103,41 @@ const rows = computed<Row[]>(() => {
     .slice(0, 500)
 })
 
+// Rows open to show where their difference comes from.
+const expanded = ref(new Set<string>())
+function toggle(key: string) {
+  expanded.value.has(key)
+    ? expanded.value.delete(key)
+    : expanded.value.add(key)
+}
+
+/** Where the difference of each open route comes from. */
+const routeDetails = computed(() => Object.fromEntries([...expanded.value]
+  .filter(key => key.startsWith('route:'))
+  .map(key => [
+    key.slice('route:'.length),
+    routeChanges(props.base, props.current, key.slice('route:'.length), props.metric),
+  ])))
+
+/** When each client chunk loads, from the current run, or the base one for a chunk it no longer has. */
+const loadedBy = computed(() => {
+  if (props.env !== 'client') {
+    return {}
+  }
+  const label = (chunk: ChunkInfo) => chunk.loadedBy === 'all'
+    ? 'Loaded on every page'
+    : chunk.loadedBy === 'lazy'
+      ? 'Loaded on demand'
+      : `Loaded before ${chunk.loadedBy?.join(', ')} renders`
+  return Object.fromEntries([
+    ...clientChunks(props.base),
+    ...clientChunks(props.current),
+  ].map(chunk => [
+    chunk.file,
+    label(chunk),
+  ]))
+})
+
 const envLabel = computed(() => props.env === 'client'
   ? 'Client'
   : 'Nitro')
@@ -185,24 +220,60 @@ function percent(delta: number, base: number) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in routes" :key="row.key" class="border-b border-default last:border-0">
-            <td class="px-4 py-2">
-              <button v-if="row.current !== undefined" class="font-mono text-xs text-left hover:text-primary hover:underline" :title="`Show the modules ${row.key} loads`" @click="emit('openRoute', row.key)">
-                {{ row.key }}
-              </button>
-              <code v-else class="text-xs">{{ row.key }}</code>
-            </td>
-            <td class="px-4 py-2 text-right whitespace-nowrap">
-              {{ row.base === undefined ? '—' : formatBytes(row.base) }}
-            </td>
-            <td class="px-4 py-2 text-right whitespace-nowrap">
-              {{ row.current === undefined ? '—' : formatBytes(row.current) }}
-            </td>
-            <td class="px-4 py-2 text-right whitespace-nowrap">
-              <UBadge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New Route' : 'Removed'" color="neutral" variant="subtle" />
-              <span v-else :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
-            </td>
-          </tr>
+          <template v-for="row in routes" :key="row.key">
+            <tr class="border-b border-default last:border-0">
+              <td class="px-4 py-2">
+                <div class="flex items-center gap-2">
+                  <UButton
+                    :icon="expanded.has(`route:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    :aria-expanded="expanded.has(`route:${row.key}`)"
+                    :aria-label="`Show where the difference of ${row.key} comes from`"
+                    @click="toggle(`route:${row.key}`)"
+                  />
+                  <button v-if="row.current !== undefined" class="font-mono text-xs text-left hover:text-primary hover:underline" :title="`Show the page of ${row.key}`" @click="emit('openRoute', row.key)">
+                    {{ row.key }}
+                  </button>
+                  <code v-else class="text-xs">{{ row.key }}</code>
+                </div>
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap">
+                {{ row.base === undefined ? '—' : formatBytes(row.base) }}
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap">
+                {{ row.current === undefined ? '—' : formatBytes(row.current) }}
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap">
+                <UBadge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New Route' : 'Removed'" color="neutral" variant="subtle" />
+                <span v-else :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
+              </td>
+            </tr>
+            <tr v-if="expanded.has(`route:${row.key}`)" class="border-b border-default bg-elevated/30 last:border-0">
+              <td colspan="4" class="px-4 py-4 sm:ps-13">
+                <div v-if="routeDetails[row.key]" class="grid gap-6 lg:grid-cols-2">
+                  <ChangeList
+                    title="Chunks It Loads"
+                    :changes="routeDetails[row.key]!.chunks"
+                    :base-name="base.run.name"
+                    :current-name="current.run.name"
+                    :notes="loadedBy"
+                    empty="The chunks it loads did not change."
+                  />
+                  <ChangeList
+                    title="Files and Packages in Them"
+                    :changes="routeDetails[row.key]!.sources"
+                    :base-name="base.run.name"
+                    :current-name="current.run.name"
+                    sources
+                    empty="No file or package in them changed."
+                    @inspect="target => emit('inspect', target)"
+                  />
+                </div>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </div>
@@ -240,27 +311,52 @@ function percent(delta: number, base: number) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in rows" :key="row.key" class="border-b border-default last:border-0">
-            <td class="px-4 py-2">
-              <div class="flex items-center gap-2">
-                <button v-if="row.target" class="font-mono text-xs text-left break-all hover:text-primary hover:underline" :title="`Show details of ${row.key}`" @click="emit('inspect', row.target)">
-                  {{ row.key }}
-                </button>
-                <code v-else class="text-xs break-all">{{ row.key }}</code>
-                <UBadge v-if="row.status === 'added'" label="Added" color="error" variant="subtle" size="sm" />
-                <UBadge v-else-if="row.status === 'removed'" label="Removed" color="success" variant="subtle" size="sm" />
-              </div>
-            </td>
-            <td class="px-4 py-2 text-right whitespace-nowrap">
-              {{ row.base === undefined ? '—' : formatBytes(row.base) }}
-            </td>
-            <td class="px-4 py-2 text-right whitespace-nowrap">
-              {{ row.current === undefined ? '—' : formatBytes(row.current) }}
-            </td>
-            <td class="px-4 py-2 text-right whitespace-nowrap" :class="deltaClass(row.delta)">
-              {{ formatDelta(row.delta) }}
-            </td>
-          </tr>
+          <template v-for="row in rows" :key="row.key">
+            <tr class="border-b border-default last:border-0">
+              <td class="px-4 py-2">
+                <div class="flex items-center gap-2">
+                  <UButton
+                    v-if="row.target"
+                    :icon="expanded.has(`row:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    :aria-expanded="expanded.has(`row:${row.key}`)"
+                    :aria-label="`Show where the difference of ${row.key} comes from`"
+                    @click="toggle(`row:${row.key}`)"
+                  />
+                  <span v-else class="w-6 shrink-0" />
+                  <button v-if="row.target" class="font-mono text-xs text-left break-all hover:text-primary hover:underline" :title="`Show details of ${row.key}`" @click="emit('inspect', row.target)">
+                    {{ row.key }}
+                  </button>
+                  <code v-else class="text-xs break-all">{{ row.key }}</code>
+                  <UBadge v-if="row.status === 'added'" label="Added" color="error" variant="subtle" size="sm" />
+                  <UBadge v-else-if="row.status === 'removed'" label="Removed" color="success" variant="subtle" size="sm" />
+                </div>
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap">
+                {{ row.base === undefined ? '—' : formatBytes(row.base) }}
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap">
+                {{ row.current === undefined ? '—' : formatBytes(row.current) }}
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap" :class="deltaClass(row.delta)">
+                {{ formatDelta(row.delta) }}
+              </td>
+            </tr>
+            <tr v-if="row.target && expanded.has(`row:${row.key}`)" class="border-b border-default bg-elevated/30 last:border-0">
+              <td colspan="4" class="px-4 py-4 sm:ps-13">
+                <ChangeList
+                  title="In Chunks"
+                  :changes="locationChanges(base, current, env, row.target, metric)"
+                  :base-name="base.run.name"
+                  :current-name="current.run.name"
+                  :notes="loadedBy"
+                  empty="It is in the same chunks, with the same size in each."
+                />
+              </td>
+            </tr>
+          </template>
           <tr v-if="rows.length === 0">
             <td colspan="4" class="px-4 py-6 text-center text-muted">
               No differences in the {{ envLabel }} bundle.

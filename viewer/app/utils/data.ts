@@ -658,6 +658,105 @@ export function routeSize(data: RunData, route: Route): Sizes {
   return sizes
 }
 
+/** A size in the base run and the current one, for one chunk, file or package. */
+export interface Change {
+  key: string
+  base?: number
+  current?: number
+  delta: number
+}
+
+/** What changed between two sets of sizes, the largest changes first, leaving out what did not change. */
+function changes(base: Map<string, number>, current: Map<string, number>, limit = Infinity): Change[] {
+  return [
+    ...new Set([
+      ...base.keys(),
+      ...current.keys(),
+    ]),
+  ]
+    .map(key => ({
+      key,
+      base: base.get(key),
+      current: current.get(key),
+      delta: (current.get(key) ?? 0) - (base.get(key) ?? 0),
+    }))
+    .filter(change => change.delta !== 0 || change.base === undefined || change.current === undefined)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, limit)
+}
+
+/**
+ * The output file a part is in, as both runs name it: `_nuxt/stats.js` for the client, or the
+ * path in Nitro's output, such as `server/chunks/build/stats.mjs`. Sonda names them from wherever
+ * the build ran, which differs between the base and the pull request.
+ */
+export function outputFile(asset: string) {
+  const client = asset.lastIndexOf('/dist/client/')
+  if (client !== -1) {
+    return asset.slice(client + '/dist/client/'.length)
+  }
+  const output = asset.indexOf('.output/')
+  return output === -1
+    ? asset
+    : asset.slice(output + '.output/'.length)
+}
+
+function sizeOf(chunk: Chunk, metric: Metric) {
+  return metric === 'uncompressed'
+    ? chunk.size
+    : chunk[metric]
+}
+
+/**
+ * Where a route's difference comes from: the files it loads before rendering that changed, and
+ * the files and packages in them that changed, a package counted as a whole.
+ */
+export function routeChanges(base: RunData, current: RunData, path: string, metric: Metric) {
+  const measure = (data: RunData) => {
+    const route = data.routes.find(route => route.path === path)
+    const files = route
+      ? routeFiles(data, route)
+      : []
+    const chunks = new Map(files.map(chunk => [
+      chunk.file,
+      sizeOf(chunk, metric),
+    ]))
+    const sources = new Map<string, number>()
+    for (const part of data.bundles.client?.parts ?? []) {
+      if (chunks.has(outputFile(part.asset))) {
+        const key = part.package
+          ? `node_modules/${part.package}`
+          : part.id
+        sources.set(key, (sources.get(key) ?? 0) + part[metric])
+      }
+    }
+    return { chunks, sources }
+  }
+  const before = measure(base)
+  const after = measure(current)
+  return {
+    chunks: changes(before.chunks, after.chunks, 8),
+    sources: changes(before.sources, after.sources, 8),
+  }
+}
+
+/** The chunks a file or package is in, in both runs, with its size in each. */
+export function locationChanges(base: RunData, current: RunData, env: Env, target: Target, metric: Metric) {
+  const measure = (data: RunData) => {
+    const sizes = new Map<string, number>()
+    for (const part of data.bundles[env]?.parts ?? []) {
+      if (target.kind === 'package'
+        ? part.package === target.id
+        : part.id === target.id) {
+        const name = outputFile(part.asset)
+        sizes.set(name, (sizes.get(name) ?? 0) + part[metric])
+      }
+    }
+    return sizes
+  }
+  return changes(measure(base), measure(current))
+}
+
 export function formatBytes(bytes: number): string {
   const abs = Math.abs(bytes)
   if (abs < 1000) {
