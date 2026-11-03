@@ -38,7 +38,7 @@ watch(state, () => {
 
 const runs = ref<Run[]>([])
 const error = ref<string>()
-const cache = new Map<string, Promise<RunData>>()
+const cache = new Map<string, Promise<RunData | undefined>>()
 const data = shallowRef<RunData>()
 const baseData = shallowRef<RunData>()
 
@@ -48,7 +48,11 @@ function load(slug: string) {
     return Promise.resolve(undefined)
   }
   if (!cache.has(slug)) {
-    cache.set(slug, fetchRun(run))
+    // A failed download shows the error instead of loading forever.
+    cache.set(slug, fetchRun(run).catch((cause) => {
+      error.value = String(cause)
+      return undefined
+    }))
   }
   return cache.get(slug)!
 }
@@ -70,6 +74,9 @@ fetchRuns().then((list) => {
 }).catch((cause) => {
   error.value = String(cause)
 })
+
+/** Until the runs and their reports are in, which takes a few seconds for a large app's hosted comparison. */
+const loading = computed(() => !error.value && (!loaded.value || (runs.value.length > 0 && !data.value) || (state.view === 'compare' && runs.value.length > 1 && !baseData.value)))
 
 // Runs load asynchronously, so a run named in the URL is only found once they are there.
 watch(() => [state.run, runs.value] as const, async ([slug]) => {
@@ -229,6 +236,22 @@ const metricItems: TabsItem[] = [
 
         <template #body>
           <UAlert v-if="error" color="error" variant="subtle" icon="i-lucide-circle-alert" title="Could not load the analysis" :description="pull ? `${error}. Reload this page to try again.` : `${error}. Check that nuxt-bundle-analyzer is still running, then reload this page.`" />
+
+          <!-- The shape of the views below, so the page doesn't jump once the reports are in. -->
+          <div v-else-if="loading" role="status" class="space-y-6">
+            <p class="text-sm text-muted">
+              {{ pull ? `Loading the comparison of #${pull.pull}…` : 'Loading the analysis…' }}
+            </p>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <USkeleton v-for="card in 2" :key="card" class="h-24 rounded-lg motion-reduce:animate-none" />
+            </div>
+            <div class="divide-y divide-default rounded-lg ring ring-default">
+              <div v-for="row in 8" :key="row" class="flex items-center gap-4 px-4 py-3">
+                <USkeleton class="h-4 motion-reduce:animate-none" :style="{ width: `${[45, 30, 38, 52, 26, 41, 33, 48][row - 1]}%` }" />
+                <USkeleton class="ms-auto h-4 w-16 motion-reduce:animate-none" />
+              </div>
+            </div>
+          </div>
 
           <UEmpty
             v-else-if="loaded && runs.length === 0"
