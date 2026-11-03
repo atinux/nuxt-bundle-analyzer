@@ -7,6 +7,8 @@ Sizes are measured by [Sonda](https://sonda.dev) on the final output, after mini
 > [!NOTE]
 > This package is experimental. Its options, the files it writes, and the upload format can change between releases.
 
+[See online demo of a comparison](https://bundle.nuxt.dev/nuxt/nuxt.com/pull/2593?view=compare&base=base&run=pr)
+
 ## Usage
 
 Run this in your Nuxt project:
