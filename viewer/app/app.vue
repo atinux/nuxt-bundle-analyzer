@@ -75,6 +75,9 @@ fetchRuns().then((list) => {
   error.value = String(cause)
 })
 
+/** Nothing to view: the hosted viewer's home page, or `serve` before any analysis. */
+const empty = computed(() => loaded.value && runs.value.length === 0)
+
 /** Until the runs and their reports are in, which takes a few seconds for a large app's hosted comparison. */
 const loading = computed(() => !error.value && (!loaded.value || (runs.value.length > 0 && !data.value) || (state.view === 'compare' && runs.value.length > 1 && !baseData.value)))
 
@@ -210,18 +213,18 @@ const metricItems: TabsItem[] = [
               </ULink>
             </template>
             <template #right>
-              <UTabs v-model="state.view" :items="viewItems" :content="false" size="xs" class="max-sm:hidden" />
+              <UTabs v-if="!empty" v-model="state.view" :items="viewItems" :content="false" size="xs" class="max-sm:hidden" />
               <UColorModeButton />
             </template>
           </UDashboardNavbar>
 
           <!-- Narrow screens give the views a row of their own, so the title keeps its room. -->
-          <div class="border-b border-default px-4 py-2 sm:hidden">
+          <div v-if="!empty" class="border-b border-default px-4 py-2 sm:hidden">
             <UTabs v-model="state.view" :items="viewItems" :content="false" size="xs" :ui="{ list: 'w-full', trigger: 'flex-1 justify-center' }" />
           </div>
 
           <!-- The controls wrap on narrow screens instead of scrolling out of view. -->
-          <UDashboardToolbar :ui="{ root: 'flex-wrap gap-y-2 py-2', left: 'flex-wrap gap-y-2', right: 'max-sm:w-full' }">
+          <UDashboardToolbar v-if="!empty" :ui="{ root: 'flex-wrap gap-y-2 py-2', left: 'flex-wrap gap-y-2', right: 'max-sm:w-full' }">
             <template #left>
               <template v-if="state.view === 'compare'">
                 <USelect v-model="state.base" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Base run" />
@@ -257,13 +260,13 @@ const metricItems: TabsItem[] = [
           </div>
 
           <UEmpty
-            v-else-if="loaded && runs.length === 0"
+            v-else-if="empty && pull"
             icon="i-lucide-package-search"
-            :title="pull ? 'No Comparison for This Pull Request' : 'No Analysis Yet'"
-            :description="pull
-              ? `Nothing was uploaded for #${pull.pull} yet. The bundle size workflow uploads it once both builds are analyzed.`
-              : 'Run npx nuxt-bundle-analyzer in your Nuxt project to analyze its bundles, or open a comparison from a pull request comment.'"
+            title="No Comparison for This Pull Request"
+            :description="`Nothing was uploaded for #${pull.pull} yet. The bundle size workflow uploads it once both builds are analyzed.`"
           />
+
+          <HomeView v-else-if="empty" />
 
           <template v-else-if="(state.view === 'pages' || state.view === 'chunks') && data && !chunks.length">
             <UEmpty
