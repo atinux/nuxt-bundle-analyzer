@@ -6,11 +6,13 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js'
 
-import { formatBytes, sourceKind } from '~/utils/data'
+import { formatBytes, formatDelta, sourceKind } from '~/utils/data'
 import { inset, squarify } from '~/utils/treemap'
 
 const props = defineProps<{
   chunks: ChunkInfo[]
+  /** The chunks of the run to compare with, to color each building by how it changed. */
+  base?: ChunkInfo[]
   env: Env
   metric: Metric
   search: string
@@ -39,6 +41,8 @@ interface Building {
   kind: Kind
   target?: Target
   size: number
+  /** Its size in the base run, when comparing: 0 when it is new. */
+  before?: number
   rect: Rect
   height: number
 }
@@ -46,6 +50,7 @@ interface Building {
 interface Plot {
   chunk: ChunkInfo
   size: number
+  before?: number
   rect: Rect
   height: number
 }
@@ -68,51 +73,83 @@ function reach(chunk: ChunkInfo, routes: number) {
   return 0.2 + 0.8 * chunk.loadedBy.length / routes
 }
 
+/** The buildings of a chunk: each of the project's files, each package as one, and Nuxt's code. */
+function buildingsOf(chunk: ChunkInfo | undefined, metric: Metric) {
+  const parts = new Map<string, Omit<Building, 'rect' | 'height'>>()
+  for (const part of chunk?.contents ?? []) {
+    const kind = sourceKind(part)
+    const id = part.package
+      ? `node_modules/${part.package}`
+      : part.id
+    const building = parts.get(id) ?? {
+      chunk: chunk!,
+      id,
+      kind: kind === 'dependency'
+        ? 'dependency'
+        : kind === 'nuxt'
+          ? 'generated'
+          : 'yours',
+      target: part.package
+        ? { kind: 'package', id: part.package }
+        : id.startsWith('[')
+          ? undefined
+          : { kind: 'file', id },
+      size: 0,
+    }
+    building.size += part[metric]
+    parts.set(id, building)
+  }
+  return parts
+}
+
 const city = computed(() => {
   const routes = new Set(props.chunks.flatMap(chunk => Array.isArray(chunk.loadedBy)
     ? chunk.loadedBy
     : [])).size || 1
-  const chunks = props.chunks
-    .map((chunk) => {
-      // A package is one building, whatever number of files it has in the chunk.
-      const parts = new Map<string, Omit<Building, 'rect' | 'height'>>()
-      for (const part of chunk.contents) {
-        const kind = sourceKind(part)
-        const id = part.package
-          ? `node_modules/${part.package}`
-          : part.id
-        const building = parts.get(id) ?? {
-          chunk,
-          id,
-          kind: kind === 'dependency'
-            ? 'dependency'
-            : kind === 'nuxt'
-              ? 'generated'
-              : 'yours',
-          target: part.package
-            ? { kind: 'package', id: part.package }
-            : id.startsWith('[')
-              ? undefined
-              : { kind: 'file', id },
-          size: 0,
+  const current = new Map(props.chunks.map(chunk => [chunk.file, chunk]))
+  const base = props.base && new Map(props.base.map(chunk => [chunk.file, chunk]))
+  // Compared, chunks are matched by name, which has no hash, and buildings by file or package.
+  const files = [
+    ...new Set([
+      ...current.keys(),
+      ...base?.keys() ?? [],
+    ]),
+  ]
+  const chunks = files
+    .map((file) => {
+      const chunk = (current.get(file) ?? base?.get(file))!
+      const parts = buildingsOf(current.get(file), props.metric)
+      if (base) {
+        for (const building of parts.values()) {
+          building.before = 0
         }
-        building.size += part[props.metric]
-        parts.set(id, building)
+        for (const [id, before] of buildingsOf(base.get(file), props.metric)) {
+          const building = parts.get(id) ?? { ...before, chunk, size: 0 }
+          building.before = before.size
+          parts.set(id, building)
+        }
       }
+      // A building takes the room of its larger size, so code a change removes keeps its place.
       const buildings = [
         ...parts.values(),
-      ].filter(building => building.size > 0)
+      ].map(building => ({
+        ...building,
+        area: Math.max(building.size, building.before ?? 0),
+      })).filter(building => building.area > 0)
       return {
         chunk,
         buildings,
         size: buildings.reduce((sum, building) => sum + building.size, 0),
+        before: base && buildings.reduce((sum, building) => sum + (building.before ?? 0), 0),
+        area: buildings.reduce((sum, building) => sum + building.area, 0),
       }
     })
-    .filter(chunk => chunk.size > 0)
+    .filter(chunk => chunk.area > 0)
 
   const plots: Plot[] = []
   const buildings: Building[] = []
-  const rects = squarify(chunks.map(chunk => chunk.size), {
+  const ghosts: Building[] = []
+  const rects = squarify(chunks.map(chunk => chunk.area), {
     x: -SIZE / 2,
     y: -SIZE / 2,
     w: SIZE,
@@ -124,17 +161,20 @@ const city = computed(() => {
     plots.push({
       chunk: entry.chunk,
       size: entry.size,
+      before: entry.before,
       rect: plot,
       height,
     })
-    const lots = squarify(entry.buildings.map(building => building.size), inset(plot, 0.5))
-    entry.buildings.forEach((building, i) => buildings.push({
+    const lots = squarify(entry.buildings.map(building => building.area), inset(plot, 0.5))
+    entry.buildings.forEach(({ area: _, ...building }, i) => (building.size > 0
+      ? buildings
+      : ghosts).push({
       ...building,
       rect: inset(lots[i]!, 0.35),
       height,
     }))
   })
-  return { plots, buildings }
+  return { plots, buildings, ghosts }
 })
 
 /** A theme color, which Nuxt UI writes in OKLCH, as three.js reads colors: in sRGB. */
@@ -165,10 +205,19 @@ let labels: CSS2DRenderer
 let controls: OrbitControls
 let buildingMesh: THREE.InstancedMesh | undefined
 let plotMesh: THREE.InstancedMesh | undefined
+/** What a change removed, where it stood in the base run. */
+let ghostMesh: THREE.InstancedMesh | undefined
 const labelObjects: CSS2DObject[] = []
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(SIZE + 6, SIZE + 6), new THREE.MeshStandardMaterial({ roughness: 1 }))
 const box = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0)
 const material = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0 })
+const ghostMaterial = new THREE.MeshStandardMaterial({
+  roughness: 0.85,
+  metalness: 0,
+  transparent: true,
+  opacity: 0.22,
+  depthWrite: false,
+})
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
 let dirty = true
@@ -191,11 +240,29 @@ function paint() {
     dependency: themeColor('--ui-text-muted', '#a3a3a3'),
     generated: themeColor('--ui-text-dimmed', '#737373'),
   }
+  // Compared, a building says how it changed instead of what it is: red when it grew, green when
+  // it shrank, the more so the larger its change, and dimmed when it did not change.
+  const grew = themeColor('--ui-error', '#ef4444')
+  const shrank = themeColor('--ui-success', '#22c55e')
+  const unchanged = colors.generated.clone().lerp(background, 0.45)
+  const changeColor = (building: Building) => {
+    const delta = building.size - building.before!
+    if (delta === 0) {
+      return unchanged.clone()
+    }
+    // A few bytes off a large package stay grey; new code, or a tenth more, reads clearly.
+    const share = Math.min(1, Math.sqrt(Math.abs(delta) / Math.max(building.size, building.before!) * 4))
+    return unchanged.clone().lerp(delta > 0
+      ? grew
+      : shrank, share)
+  }
   const query = props.search.trim().toLowerCase()
   city.value.buildings.forEach((building, index) => {
-    const color = colors[building.kind].clone()
+    const color = building.before === undefined
+      ? colors[building.kind].clone()
+      : changeColor(building)
     // Packages differ slightly in shade, so neighbors read apart.
-    if (building.kind === 'dependency') {
+    if (building.kind === 'dependency' && building.before === undefined) {
       color.offsetHSL(0, 0, (hash(building.id) - 0.5) * 0.3)
     }
     if (index === highlighted) {
@@ -208,14 +275,28 @@ function paint() {
     }
     buildingMesh!.setColorAt(index, color)
   })
+  // A light ground needs more of a ghost to show it.
+  ghostMaterial.opacity = colorMode.value === 'dark'
+    ? 0.22
+    : 0.45
+  city.value.ghosts.forEach((building, index) => {
+    const color = shrank.clone()
+    if (query && !building.id.toLowerCase().includes(query) && !building.chunk.file.toLowerCase().includes(query)) {
+      color.lerp(background, 0.82)
+    }
+    ghostMesh!.setColorAt(index, color)
+  })
   city.value.plots.forEach((_, index) => plotMesh!.setColorAt(index, plotColor))
   buildingMesh.instanceColor!.needsUpdate = true
   plotMesh.instanceColor!.needsUpdate = true
+  if (ghostMesh?.instanceColor) {
+    ghostMesh.instanceColor.needsUpdate = true
+  }
   dirty = true
 }
 
-function instances(rects: { rect: Rect, height: number }[], height: (entry: { height: number }) => number) {
-  const mesh = new THREE.InstancedMesh(box, material, Math.max(rects.length, 1))
+function instances(rects: { rect: Rect, height: number }[], height: (entry: { height: number }) => number, of = material) {
+  const mesh = new THREE.InstancedMesh(box, of, Math.max(rects.length, 1))
   mesh.count = rects.length
   const matrix = new THREE.Matrix4()
   rects.forEach((entry, index) => {
@@ -232,7 +313,7 @@ function build() {
   if (!scene) {
     return
   }
-  for (const mesh of [buildingMesh, plotMesh]) {
+  for (const mesh of [buildingMesh, plotMesh, ghostMesh]) {
     if (mesh) {
       scene.remove(mesh)
       mesh.dispose()
@@ -247,16 +328,22 @@ function build() {
   plotMesh = instances(city.value.plots, () => PLOT_HEIGHT)
   buildingMesh = instances(city.value.buildings, entry => entry.height)
   buildingMesh.position.y = PLOT_HEIGHT
-  scene.add(plotMesh, buildingMesh)
+  ghostMesh = instances(city.value.ghosts, entry => entry.height, ghostMaterial)
+  ghostMesh.position.y = PLOT_HEIGHT
+  scene.add(plotMesh, buildingMesh, ghostMesh)
 
-  for (const plot of [...city.value.plots].filter(plot => plot.rect.w * plot.rect.h >= LABEL_MIN_AREA).sort((a, b) => b.size - a.size).slice(0, LABELS)) {
-    // The plot's rim is too thin to aim at, so its label is the way to open the chunk.
-    const element = document.createElement('button')
-    element.type = 'button'
-    element.className = 'pointer-events-auto cursor-pointer rounded-sm bg-default/80 px-1.5 py-0.5 font-mono text-xs text-highlighted ring ring-default whitespace-nowrap transition-colors hover:bg-elevated focus-visible:outline-2 focus-visible:outline-primary'
+  for (const plot of [...city.value.plots].filter(plot => plot.rect.w * plot.rect.h >= LABEL_MIN_AREA).sort((a, b) => Math.max(b.size, b.before ?? 0) - Math.max(a.size, a.before ?? 0)).slice(0, LABELS)) {
+    // The plot's rim is too thin to aim at, so its label is the way to open the chunk, unless a
+    // change removed it.
+    const opens = props.chunks.some(chunk => chunk.file === plot.chunk.file)
+    const element = document.createElement(opens ? 'button' : 'span')
+    element.className = `rounded-sm bg-default/80 px-1.5 py-0.5 font-mono text-xs text-highlighted ring ring-default whitespace-nowrap ${opens ? 'pointer-events-auto cursor-pointer transition-colors hover:bg-elevated focus-visible:outline-2 focus-visible:outline-primary' : 'line-through decoration-muted'}`
     element.textContent = plot.chunk.file.split('/').pop()!
-    element.title = `Open ${element.textContent} in By Chunk`
-    element.addEventListener('click', () => emit('openChunk', plot.chunk.file))
+    if (element instanceof HTMLButtonElement) {
+      element.type = 'button'
+      element.title = `Open ${element.textContent} in By Chunk`
+      element.addEventListener('click', () => emit('openChunk', plot.chunk.file))
+    }
     const label = new CSS2DObject(element)
     label.position.set(plot.rect.x + plot.rect.w / 2, PLOT_HEIGHT + plot.height + 1.2, plot.rect.y + plot.rect.h / 2)
     scene.add(label)
@@ -279,6 +366,19 @@ function hideOverlappingLabels() {
   }
 }
 
+/** How a size changed between the runs, such as `12.4 kB → 8.1 kB (−4.3 kB)`. */
+function changeLabel(before: number, after: number) {
+  if (before === 0) {
+    return `New, ${formatBytes(after)}`
+  }
+  if (after === 0) {
+    return `Removed, was ${formatBytes(before)}`
+  }
+  return before === after
+    ? `${formatBytes(after)}, unchanged`
+    : `${formatBytes(before)} → ${formatBytes(after)} (${formatDelta(after - before)})`
+}
+
 function loadedLabel(chunk: ChunkInfo) {
   if (!chunk.loadedBy) {
     return undefined
@@ -295,13 +395,15 @@ function pick(event: PointerEvent) {
   const bounds = renderer.domElement.getBoundingClientRect()
   pointer.set(((event.clientX - bounds.left) / bounds.width) * 2 - 1, -((event.clientY - bounds.top) / bounds.height) * 2 + 1)
   raycaster.setFromCamera(pointer, camera)
-  const [hit] = raycaster.intersectObjects([buildingMesh, plotMesh].filter(Boolean) as THREE.Object3D[], false)
+  const [hit] = raycaster.intersectObjects([buildingMesh, ghostMesh, plotMesh].filter(Boolean) as THREE.Object3D[], false)
   if (!hit || hit.instanceId === undefined) {
     return undefined
   }
   return hit.object === buildingMesh
     ? { building: city.value.buildings[hit.instanceId]!, index: hit.instanceId, bounds }
-    : { plot: city.value.plots[hit.instanceId]!, bounds }
+    : hit.object === ghostMesh
+      ? { building: city.value.ghosts[hit.instanceId]!, bounds }
+      : { plot: city.value.plots[hit.instanceId]!, bounds }
 }
 
 function onPointerMove(event: PointerEvent) {
@@ -332,7 +434,12 @@ function onPointerMove(event: PointerEvent) {
       title: building.id.startsWith('node_modules/')
         ? building.id.slice('node_modules/'.length)
         : building.id,
-      lines: [`${formatBytes(building.size)} in ${building.chunk.file.split('/').pop()}`, loadedLabel(building.chunk) ?? ''].filter(Boolean),
+      lines: [
+        building.before === undefined
+          ? `${formatBytes(building.size)} in ${building.chunk.file.split('/').pop()}`
+          : `${changeLabel(building.before, building.size)} in ${building.chunk.file.split('/').pop()}`,
+        loadedLabel(building.chunk) ?? '',
+      ].filter(Boolean),
     }
   }
   else if ('plot' in hit && hit.plot) {
@@ -341,7 +448,9 @@ function onPointerMove(event: PointerEvent) {
       y,
       title: hit.plot.chunk.file.split('/').pop()!,
       lines: [
-        formatBytes(hit.plot.size),
+        hit.plot.before === undefined
+          ? formatBytes(hit.plot.size)
+          : changeLabel(hit.plot.before, hit.plot.size),
         loadedLabel(hit.plot.chunk) ?? '',
       ].filter(Boolean),
     }
@@ -361,7 +470,7 @@ function onPointerUp(event: PointerEvent) {
   if (hit && 'building' in hit && hit.building?.target) {
     emit('inspect', hit.building.target)
   }
-  else if (hit && 'plot' in hit && hit.plot) {
+  else if (hit && 'plot' in hit && hit.plot && props.chunks.some(chunk => chunk.file === hit.plot.chunk.file)) {
     emit('openChunk', hit.plot.chunk.file)
   }
 }
@@ -455,6 +564,8 @@ onBeforeUnmount(() => {
   controls.dispose()
   buildingMesh?.dispose()
   plotMesh?.dispose()
+  ghostMesh?.dispose()
+  ghostMaterial.dispose()
   box.dispose()
   material.dispose()
   ground.geometry.dispose()
@@ -470,7 +581,9 @@ onBeforeUnmount(() => {
     ref="container"
     tabindex="0"
     role="img"
-    :aria-label="`A city of the ${env === 'client' ? 'client' : 'Nitro'} build's ${chunks.length} chunks. The same chunks are listed in By Chunk.`"
+    :aria-label="base
+      ? `A city of the ${env === 'client' ? 'client' : 'Nitro'} build's chunks, colored by how they changed. The same changes are listed in the tables.`
+      : `A city of the ${env === 'client' ? 'client' : 'Nitro'} build's ${chunks.length} chunks. The same chunks are listed in By Chunk.`"
     class="relative h-[70vh] min-h-96 overflow-hidden rounded-lg ring ring-default focus-visible:outline-2 focus-visible:outline-primary"
   >
     <UEmpty
@@ -493,10 +606,19 @@ onBeforeUnmount(() => {
       </p>
     </div>
     <div class="pointer-events-none absolute bottom-3 left-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-default/80 px-2.5 py-1.5 text-xs text-muted ring ring-default">
-      <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-xs bg-primary" />Your code</span>
-      <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-xs bg-(--ui-text-muted)" />Dependencies</span>
-      <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-xs bg-(--ui-text-dimmed)" />Generated by Nuxt</span>
-      <span>Area is size · {{ env === 'client' ? 'Height is how many pages load it' : 'Nitro chunks share one height' }}</span>
+      <template v-if="base">
+        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-xs bg-error" />Grew or new</span>
+        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-xs bg-success" />Shrank</span>
+        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-xs bg-success/25 ring ring-success/60" />Removed</span>
+        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-xs bg-(--ui-text-dimmed)/55" />Unchanged</span>
+        <span>Area is the larger size of the two</span>
+      </template>
+      <template v-else>
+        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-xs bg-primary" />Your code</span>
+        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-xs bg-(--ui-text-muted)" />Dependencies</span>
+        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-xs bg-(--ui-text-dimmed)" />Generated by Nuxt</span>
+      </template>
+      <span>{{ base ? '' : 'Area is size · ' }}{{ env === 'client' ? 'Height is how many pages load it' : 'Nitro chunks share one height' }}</span>
     </div>
   </div>
 </template>

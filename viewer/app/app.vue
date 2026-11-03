@@ -298,6 +298,7 @@ const metricItems: TabsItem[] = [
               :search="state.search"
               @inspect="inspect"
               @open-route="openRoute"
+              @open-chunk="openChunk"
             />
           </template>
 

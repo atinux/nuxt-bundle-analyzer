@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ChunkInfo, Env, Metric, RunData, Source, Target } from '~/utils/data'
-import { clientChunks, formatBytes, formatDelta, locationChanges, routeChanges, routeSize } from '~/utils/data'
+import { clientChunks, formatBytes, formatDelta, locationChanges, routeChanges, routeSize, serverChunks } from '~/utils/data'
 
 const props = defineProps<{
   base: RunData
@@ -14,9 +14,23 @@ const emit = defineEmits<{
   inspect: [target: Target]
   /** Show the page a route renders in the current run. */
   openRoute: [path: string]
+  openChunk: [file: string]
 }>()
 
 const groupBy = ref<'package' | 'module'>('package')
+/** The tables of what changed, or the same changes on the city of the chunks. */
+const show = ref<'tables' | 'city'>('tables')
+function chunksOf(data: RunData) {
+  return props.env === 'client'
+    ? clientChunks(data)
+    : serverChunks(data)
+}
+const cityChunks = computed(() => show.value === 'city'
+  ? {
+      base: chunksOf(props.base),
+      current: chunksOf(props.current),
+    }
+  : undefined)
 
 const totals = computed(() => ({
   base: props.base.bundles[props.env]?.[props.metric] ?? 0,
@@ -191,7 +205,32 @@ function percent(delta: number, base: number) {
     </div>
   </div>
 
-  <UCard v-if="routes.length" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+  <div class="flex items-center justify-between gap-3">
+    <p class="text-sm text-muted">
+      {{ show === 'tables'
+        ? 'Where the difference is, by route and by package or module.'
+        : `The chunks of ${current.run.name}, each file or package colored by how it changed since ${base.run.name}. Drag to turn, scroll to zoom.` }}
+    </p>
+    <UTabs
+      v-model="show"
+      :items="[{ label: 'Tables', value: 'tables' }, { label: '3D', value: 'city' }]"
+      :content="false"
+      size="xs"
+    />
+  </div>
+
+  <LazyChunksCity
+    v-if="cityChunks"
+    :chunks="cityChunks.current"
+    :base="cityChunks.base"
+    :env="env"
+    :metric="metric"
+    :search="search"
+    @inspect="target => emit('inspect', target)"
+    @open-chunk="file => emit('openChunk', file)"
+  />
+
+  <UCard v-if="show === 'tables' && routes.length" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
     <template #header>
       <h3 class="text-base text-highlighted">
         Initial Load per Route
@@ -279,7 +318,7 @@ function percent(delta: number, base: number) {
     </div>
   </UCard>
 
-  <UCard :ui="{ header: 'py-3 sm:px-4 flex items-center justify-between gap-2', body: 'p-0 sm:p-0' }">
+  <UCard v-if="show === 'tables'" :ui="{ header: 'py-3 sm:px-4 flex items-center justify-between gap-2', body: 'p-0 sm:p-0' }">
     <template #header>
       <h3 class="text-base text-highlighted">
         Changed {{ groupBy === 'package' ? 'Packages and Modules' : 'Modules' }}
