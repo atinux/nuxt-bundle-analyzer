@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -65,6 +65,11 @@ const command = COMMANDS.includes(positionals[0] ?? '')
   ? positionals.shift()!
   : 'analyze'
 const rootDir = resolve(positionals[0] ?? '.')
+// An option typed with an en or em dash, such as `—prerender`, arrives as the project directory.
+if (!existsSync(rootDir)) {
+  console.error(`There is no directory ${positionals[0]}. Options start with two hyphens, such as --prerender.`)
+  process.exit(1)
+}
 const runsDir = values.runs
   ? resolve(values.runs)
   : defaultRunsDir(rootDir)

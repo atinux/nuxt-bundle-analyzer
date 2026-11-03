@@ -1,6 +1,7 @@
 import type { Nuxt } from '@nuxt/schema'
 
-import { promises as fsp } from 'node:fs'
+import { promises as fsp, statSync } from 'node:fs'
+import { isAbsolute, resolve as resolvePath } from 'node:path'
 import process from 'node:process'
 import { defineNuxtModule, useLogger } from '@nuxt/kit'
 import { join, relative, resolve } from 'pathe'
@@ -34,6 +35,20 @@ const logger = useLogger('nuxt-bundle-analyzer')
 function isAnalyzing(nuxt: Nuxt) {
   const analyze = nuxt.options.build.analyze
   return analyze === true || (typeof analyze === 'object' && analyze.enabled === true)
+}
+
+/**
+ * Resolves a source map's source as Sonda does, but drops one that names a directory, which Sonda
+ * would try to read. Nuxt's `experimental.extractAsyncDataHandlers` can emit such a source for its
+ * `async-data-chunk-*.js` chunks; Sonda counts the bytes of a dropped source as unassigned.
+ */
+export function resolveSource(path: string, sourceRoot: string): string {
+  const source = isAbsolute(path)
+    ? path
+    : resolvePath(sourceRoot, path)
+  return (statSync(source, { throwIfNoEntry: false })?.isDirectory()
+    ? null
+    : source) as string
 }
 
 export default defineNuxtModule<ModuleOptions>({
@@ -87,6 +102,7 @@ export default defineNuxtModule<ModuleOptions>({
       open: false as const,
       gzip: true,
       brotli: true,
+      sourcesPathNormalizer: resolveSource,
     })
 
     nuxt.hook('vite:extendConfig', (config, { isClient }) => {
