@@ -49,6 +49,8 @@ export default defineNuxtConfig({
       if (config.static) {
         config.output = { ...config.output, dir: '.output-static', publicDir: '.output-static/public' }
       }
+      // The hosted build only has the runs of pull requests, so its home page has none to fetch.
+      config.runtimeConfig!.public = { ...config.runtimeConfig!.public, hosted: !config.static && !config.dev }
     },
   },
   // Inter and Outfit are downloaded at build time and shipped with the package; Latin covers the UI.

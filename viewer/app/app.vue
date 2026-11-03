@@ -60,20 +60,24 @@ function load(slug: string) {
 /** The pull request the hosted viewer shows, when it is opened from one. */
 const pull = hostedPull()
 const pullLink = pull && { to: `https://github.com/${pull.owner}/${pull.repo}/pull/${pull.pull}`, label: `${pull.owner}/${pull.repo}#${pull.pull}` }
-const loaded = ref(false)
+// The hosted viewer only has the runs of pull requests, so its home page shows straight away,
+// rather than once a request says there is nothing to view.
+const loaded = ref(useRuntimeConfig().public.hosted && !pull)
 
-fetchRuns().then((list) => {
-  runs.value = list
-  loaded.value = true
-  if (!list.some(run => run.slug === state.run)) {
-    state.run = (list.find(run => run.current) ?? list[0])?.slug ?? ''
-  }
-  if (!list.some(run => run.slug === state.base)) {
-    state.base = list.find(run => run.slug !== state.run)?.slug ?? ''
-  }
-}).catch((cause) => {
-  error.value = String(cause)
-})
+if (!loaded.value) {
+  fetchRuns().then((list) => {
+    runs.value = list
+    loaded.value = true
+    if (!list.some(run => run.slug === state.run)) {
+      state.run = (list.find(run => run.current) ?? list[0])?.slug ?? ''
+    }
+    if (!list.some(run => run.slug === state.base)) {
+      state.base = list.find(run => run.slug !== state.run)?.slug ?? ''
+    }
+  }).catch((cause) => {
+    error.value = String(cause)
+  })
+}
 
 /** Nothing to view: the hosted viewer's home page, or `serve` before any analysis. */
 const empty = computed(() => loaded.value && runs.value.length === 0)
