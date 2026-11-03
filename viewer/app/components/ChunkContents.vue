@@ -41,7 +41,7 @@ const share = (size: number) => `${Math.max(1, Math.round(size / total.value * 1
 </script>
 
 <template>
-  <div class="grid gap-6 md:grid-cols-2">
+  <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
     <section>
       <h4 class="mb-2 text-sm text-highlighted">
         Your Files
@@ -51,7 +51,11 @@ const share = (size: number) => `${Math.max(1, Math.round(size / total.value * 1
           <div class="flex items-center justify-between gap-3 text-sm">
             <button class="flex min-w-0 items-center gap-1.5 text-left font-mono text-xs hover:text-primary hover:underline" :title="`Show details of ${part.id}`" @click="emit('inspect', { kind: 'file', id: part.id })">
               <FileIcon :path="part.id" class="size-3.5" />
-              <span class="truncate">{{ part.id }}</span>
+              <!-- On narrow screens the folders give way first, so the file name stays readable. -->
+              <span class="flex min-w-0">
+                <span class="truncate">{{ part.id.slice(0, part.id.lastIndexOf('/') + 1) }}</span>
+                <span class="truncate shrink-0 max-w-full">{{ part.id.slice(part.id.lastIndexOf('/') + 1) }}</span>
+              </span>
             </button>
             <span class="shrink-0 text-muted">{{ formatBytes(part[metric]) }}</span>
           </div>

@@ -252,7 +252,7 @@ function percent(delta: number, base: number) {
             </tr>
             <tr v-if="expanded.has(`route:${row.key}`)" class="border-b border-default bg-elevated/30 last:border-0">
               <td colspan="4" class="px-4 py-4 sm:ps-13">
-                <div v-if="routeDetails[row.key]" class="grid gap-6 lg:grid-cols-2">
+                <div v-if="routeDetails[row.key]" class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                   <ChangeList
                     title="Chunks It Loads"
                     :changes="routeDetails[row.key]!.chunks"
