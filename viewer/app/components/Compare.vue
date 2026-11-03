@@ -239,7 +239,7 @@ function percent(delta: number, base: number) {
         JavaScript and CSS loaded before each route renders.
       </p>
     </template>
-    <!-- Narrow screens scroll the table sideways rather than squeezing its figures. -->
+    <!-- Phones keep the difference and leave both sizes to the details; anything wider still scrolls sideways. -->
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead class="text-muted">
@@ -247,10 +247,10 @@ function percent(delta: number, base: number) {
             <th class="px-4 py-2 text-left font-medium">
               Route
             </th>
-            <th class="px-4 py-2 text-right font-medium">
+            <th class="px-4 py-2 text-right font-medium max-sm:hidden">
               {{ base.run.name }}
             </th>
-            <th class="px-4 py-2 text-right font-medium">
+            <th class="px-4 py-2 text-right font-medium max-sm:hidden">
               {{ current.run.name }}
             </th>
             <th class="px-4 py-2 text-right font-medium">
@@ -262,7 +262,7 @@ function percent(delta: number, base: number) {
           <template v-for="row in routes" :key="row.key">
             <tr class="border-b border-default last:border-0">
               <td class="px-4 py-2">
-                <div class="flex items-center gap-2">
+                <div class="flex min-w-32 items-center gap-2">
                   <UButton
                     :icon="expanded.has(`route:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
                     color="neutral"
@@ -272,16 +272,16 @@ function percent(delta: number, base: number) {
                     :aria-label="`Show where the difference of ${row.key} comes from`"
                     @click="toggle(`route:${row.key}`)"
                   />
-                  <button v-if="row.current !== undefined" class="font-mono text-xs text-left hover:text-primary hover:underline" :title="`Show the page of ${row.key}`" @click="emit('openRoute', row.key)">
+                  <button v-if="row.current !== undefined" class="font-mono text-xs text-left break-all hover:text-primary hover:underline" :title="`Show the page of ${row.key}`" @click="emit('openRoute', row.key)">
                     {{ row.key }}
                   </button>
-                  <code v-else class="text-xs">{{ row.key }}</code>
+                  <code v-else class="text-xs break-all">{{ row.key }}</code>
                 </div>
               </td>
-              <td class="px-4 py-2 text-right whitespace-nowrap">
+              <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden">
                 {{ row.base === undefined ? '—' : formatBytes(row.base) }}
               </td>
-              <td class="px-4 py-2 text-right whitespace-nowrap">
+              <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden">
                 {{ row.current === undefined ? '—' : formatBytes(row.current) }}
               </td>
               <td class="px-4 py-2 text-right whitespace-nowrap">
@@ -330,7 +330,7 @@ function percent(delta: number, base: number) {
         size="xs"
       />
     </template>
-    <!-- Narrow screens scroll the table sideways rather than squeezing its figures. -->
+    <!-- Phones keep the difference and leave both sizes to the details; anything wider still scrolls sideways. -->
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead class="text-muted">
@@ -338,10 +338,10 @@ function percent(delta: number, base: number) {
             <th class="px-4 py-2 text-left font-medium">
               Path
             </th>
-            <th class="px-4 py-2 text-right font-medium">
+            <th class="px-4 py-2 text-right font-medium max-sm:hidden">
               {{ base.run.name }}
             </th>
-            <th class="px-4 py-2 text-right font-medium">
+            <th class="px-4 py-2 text-right font-medium max-sm:hidden">
               {{ current.run.name }}
             </th>
             <th class="px-4 py-2 text-right font-medium">
@@ -353,7 +353,8 @@ function percent(delta: number, base: number) {
           <template v-for="row in rows" :key="row.key">
             <tr class="border-b border-default last:border-0">
               <td class="px-4 py-2">
-                <div class="flex items-center gap-2">
+                <!-- The path keeps room to read, and narrow screens scroll the table instead of squeezing it. -->
+                <div class="flex min-w-48 items-center gap-2">
                   <UButton
                     v-if="row.target"
                     :icon="expanded.has(`row:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
@@ -365,18 +366,20 @@ function percent(delta: number, base: number) {
                     @click="toggle(`row:${row.key}`)"
                   />
                   <span v-else class="w-6 shrink-0" />
-                  <button v-if="row.target" class="font-mono text-xs text-left break-all hover:text-primary hover:underline" :title="`Show details of ${row.key}`" @click="emit('inspect', row.target)">
-                    {{ row.key }}
-                  </button>
-                  <code v-else class="text-xs break-all">{{ row.key }}</code>
-                  <UBadge v-if="row.status === 'added'" label="Added" color="error" variant="subtle" size="sm" />
-                  <UBadge v-else-if="row.status === 'removed'" label="Removed" color="success" variant="subtle" size="sm" />
+                  <span class="min-w-0">
+                    <button v-if="row.target" class="font-mono text-xs text-left break-all hover:text-primary hover:underline" :title="`Show details of ${row.key}`" @click="emit('inspect', row.target)">
+                      {{ row.key }}
+                    </button>
+                    <code v-else class="text-xs break-all">{{ row.key }}</code>
+                    <UBadge v-if="row.status === 'added'" label="Added" color="error" variant="subtle" size="sm" class="ms-1.5 align-middle" />
+                    <UBadge v-else-if="row.status === 'removed'" label="Removed" color="success" variant="subtle" size="sm" class="ms-1.5 align-middle" />
+                  </span>
                 </div>
               </td>
-              <td class="px-4 py-2 text-right whitespace-nowrap">
+              <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden">
                 {{ row.base === undefined ? '—' : formatBytes(row.base) }}
               </td>
-              <td class="px-4 py-2 text-right whitespace-nowrap">
+              <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden">
                 {{ row.current === undefined ? '—' : formatBytes(row.current) }}
               </td>
               <td class="px-4 py-2 text-right whitespace-nowrap" :class="deltaClass(row.delta)">

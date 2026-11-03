@@ -57,10 +57,10 @@ function deltaClass(delta: number) {
           <th class="pb-1 text-left font-normal">
             <span class="sr-only">Name</span>
           </th>
-          <th class="pb-1 ps-3 text-right font-normal">
+          <th class="pb-1 ps-3 text-right font-normal max-sm:hidden">
             {{ baseName }}
           </th>
-          <th class="pb-1 ps-3 text-right font-normal">
+          <th class="pb-1 ps-3 text-right font-normal max-sm:hidden">
             {{ currentName }}
           </th>
           <th class="pb-1 ps-3 text-right font-normal">
@@ -70,7 +70,7 @@ function deltaClass(delta: number) {
       </thead>
       <tbody>
         <tr v-for="change in changes" :key="change.key">
-          <td class="py-1 align-top">
+          <td class="min-w-40 py-1 align-top">
             <component
               :is="targetOf(change.key) ? 'button' : 'span'"
               class="flex min-w-0 items-center gap-1.5 text-left font-mono"
@@ -86,10 +86,10 @@ function deltaClass(delta: number) {
               {{ notes[change.key] }}
             </p>
           </td>
-          <td class="py-1 ps-3 text-right align-top whitespace-nowrap text-muted">
+          <td class="py-1 ps-3 text-right align-top whitespace-nowrap text-muted max-sm:hidden">
             {{ size(change.base) }}
           </td>
-          <td class="py-1 ps-3 text-right align-top whitespace-nowrap text-muted">
+          <td class="py-1 ps-3 text-right align-top whitespace-nowrap text-muted max-sm:hidden">
             {{ size(change.current) }}
           </td>
           <td class="py-1 ps-3 text-right align-top whitespace-nowrap" :class="deltaClass(change.delta)">
