@@ -201,9 +201,11 @@ const metricItems: TabsItem[] = [
 
 <template>
   <UApp>
-    <UDashboardGroup>
+    <!-- On phones the page scrolls as a document rather than inside the panel, so the browser can
+         collapse its toolbar and the footer clears floating bars such as Arc's. -->
+    <UDashboardGroup class="max-sm:static max-sm:overflow-visible">
       <!-- The body scrolls, so its sections keep their height instead of shrinking to fit it. -->
-      <UDashboardPanel id="main" :ui="{ body: 'tabular-nums *:shrink-0' }">
+      <UDashboardPanel id="main" :ui="{ body: 'tabular-nums *:shrink-0 max-sm:overflow-visible' }">
         <template #header>
           <UDashboardNavbar :toggle="false">
             <template #title>
