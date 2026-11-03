@@ -129,7 +129,7 @@ const PNPM_VERSION_RE = /\.pnpm\/@?[^@/]+@([^_/]+)/
  * Sonda names sources relative to the directory `nuxt analyze` ran in. Dependencies are named
  * after their package, wherever the package manager put them, so runs compare by package.
  */
-function normalizeId(name: string): string {
+export function normalizeId(name: string): string {
   let path = name.replaceAll('\\', '/')
   // Nuxt's virtual modules carry their encoded path, such as `virtual:nuxt:.nuxt%2Ffetch.mjs`.
   const virtual = path.indexOf('virtual:')
@@ -141,9 +141,12 @@ function normalizeId(name: string): string {
     // Sonda resolves the client build's own sources against the build directory, so
     // `.nuxt/app/pages/index.vue` is `app/pages/index.vue`; files Nuxt generates stay in `.nuxt`.
     const rest = path.slice(buildDir + '.nuxt/'.length)
-    return virtual !== -1 || rest.startsWith('dist/')
-      ? `.nuxt/${rest}`
-      : rest
+    if (virtual !== -1 || rest.startsWith('dist/')) {
+      return `.nuxt/${rest}`
+    }
+    // Dependencies too, so with a build directory in `node_modules/.cache`, as nuxt.com has, they
+    // read `.nuxt/node_modules/.pnpm/vue@3.5.44/node_modules/vue/…` and go on to be named below.
+    path = rest
   }
   const modules = path.lastIndexOf('node_modules/')
   if (modules !== -1) {

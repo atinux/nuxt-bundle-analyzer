@@ -2,7 +2,7 @@ import type { Bundle, Part, RunData } from '../viewer/app/utils/data'
 
 import { describe, expect, it } from 'vitest'
 
-import { locationChanges, routeChanges } from '../viewer/app/utils/data'
+import { locationChanges, normalizeId, packageOf, routeChanges } from '../viewer/app/utils/data'
 
 function part(asset: string, id: string, gzip: number, pkg?: string): Part {
   return {
@@ -111,5 +111,21 @@ describe('routeChanges', () => {
         delta: 10,
       },
     ])
+  })
+})
+
+describe('normalizeId', () => {
+  // Names as Sonda gives them for nuxt.com, whose build directory is `node_modules/.cache/nuxt/.nuxt`.
+  const buildDir = 'node_modules/.cache/nuxt/.nuxt'
+
+  it('names a dependency inside the build directory after its package, not `.pnpm`', () => {
+    const id = normalizeId(`${buildDir}/node_modules/.pnpm/@ai-sdk+provider@4.0.35/node_modules/@ai-sdk/provider/dist/index.js`)
+    expect(id).toBe('node_modules/@ai-sdk/provider/dist/index.js')
+    expect(packageOf(id)).toBe('@ai-sdk/provider')
+  })
+
+  it('keeps the project files and the files Nuxt generates apart', () => {
+    expect(normalizeId(`${buildDir}/app/pages/index.vue`)).toBe('app/pages/index.vue')
+    expect(normalizeId(`${buildDir}/dist/client/_nuxt/entry.js`)).toBe('.nuxt/dist/client/_nuxt/entry.js')
   })
 })
