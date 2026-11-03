@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { STATUS_CODES } from 'node:http'
+import process from 'node:process'
 import { gunzipSync } from 'node:zlib'
 import { createRemoteJWKSet } from 'jose'
 
@@ -31,6 +32,10 @@ export default defineEventHandler(async (event) => {
       allowedWorkflows: oidc.allowedWorkflows.split(',').map(workflow => workflow.trim()).filter(Boolean),
       keys: keySets.get(oidc.jwksUrl)!,
     })
+    // Without a Blob store, reports would go to the deployment's read-only disk.
+    if (process.env.VERCEL && !process.env.BLOB_READ_WRITE_TOKEN) {
+      throw new RequestError(503, 'This viewer has no Blob store to keep reports in. Connect a Vercel Blob store to its project, then redeploy it.')
+    }
 
     const raw = await readRawBody(event, false)
     if (!raw || raw.length === 0) {
