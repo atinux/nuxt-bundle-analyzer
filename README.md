@@ -7,6 +7,8 @@ Sizes are measured by [Sonda](https://sonda.dev) on the final output, after mini
 > [!NOTE]
 > This package is experimental. Its options, the files it writes, and the upload format can change between releases.
 
+https://github.com/user-attachments/assets/db6b95b7-0e33-4a54-9a60-69192bb6becf
+
 [Open the online demo](https://bundle.nuxt.dev/nuxt/nuxt.com/pull/2593?view=compare&base=base&run=pr), which compares two builds of [nuxt.com](https://nuxt.com).
 
 ## Features
