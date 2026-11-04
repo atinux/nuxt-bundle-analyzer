@@ -6,7 +6,7 @@ import { createRemoteJWKSet } from 'jose'
 
 import { RequestError, verifyGitHubToken } from '../utils/oidc'
 import { parseUpload } from '../utils/reports'
-import { saveUpload } from '../utils/storage'
+import { saveCommit, saveUpload } from '../utils/storage'
 
 /** Gzipped reports of a large app stay well under this, and under Vercel's 4.5 MB body limit. */
 const MAX_BODY = 4 * 1024 * 1024
@@ -62,9 +62,20 @@ export default defineEventHandler(async (event) => {
     }
     const upload = parseUpload(body)
     // Stored under the repository the token was issued to, never one the body names.
+    const page = `${origin}/${claims.repository.toLowerCase()}`
+    if (upload.kind === 'commit') {
+      const history = await saveCommit(claims.repository, upload)
+      const index = history.findIndex(commit => commit.sha === upload.commit.sha)
+      const previous = history[index - 1]
+      // Links to what the commit changed, or to the history when it is the first one.
+      const query = previous
+        ? `?${new URLSearchParams({ view: 'compare', base: previous.sha, run: upload.commit.sha })}`
+        : ''
+      return { url: `${page}/tree/${upload.branch}${query}` }
+    }
     await saveUpload(claims.repository, upload)
     const query = new URLSearchParams({ view: 'compare', base: upload.base, run: upload.head })
-    return { url: `${origin}/${claims.repository.toLowerCase()}/pull/${upload.pull}?${query}` }
+    return { url: `${page}/pull/${upload.pull}?${query}` }
   }
   catch (error) {
     if (error instanceof RequestError) {

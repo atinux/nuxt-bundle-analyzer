@@ -19,7 +19,26 @@ export interface StoredRun {
   endTime: number
 }
 
-export interface Upload {
+export interface Sizes {
+  uncompressed: number
+  gzip: number
+  brotli: number
+}
+
+/** A commit of a branch's history: what the trend shows without downloading its reports. */
+export interface Commit {
+  sha: string
+  /** The first line of its message. */
+  message?: string
+  /** When it was committed, in milliseconds, which orders the history. */
+  time: number
+  /** The total of each build, as Compare adds it up: every output file in Sonda's report. */
+  sizes: Partial<Record<'client' | 'nitro', Sizes>>
+}
+
+/** Two runs compared for a pull request. */
+export interface PullUpload {
+  kind: 'pull'
   pull: number
   sha?: string
   base: string
@@ -29,16 +48,125 @@ export interface Upload {
   meta: Record<string, StoredRun>
 }
 
+/** One run, built from a commit pushed to a branch. */
+export interface CommitUpload {
+  kind: 'commit'
+  branch: string
+  commit: Commit
+  /** The files of the run as JSON text, rewritten from what was parsed. */
+  files: Record<string, string>
+}
+
+export type Upload = PullUpload | CommitUpload
+
+/** A branch name that is also a single path segment, such as `main` or `v4`. */
+export const BRANCH_RE = /^\w[\w.-]{0,99}$/
+const SHA_RE = /^[0-9a-f]{40}$/
+
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** Checks the files of one run and serializes each again, with its `meta.json` named `name`. */
+function parseRun(name: string, files: unknown): { files: Record<string, string>, meta: StoredRun } {
+  if (!isObject(files) || !Object.keys(files).every(file => RUN_FILES.includes(file))) {
+    throw new RequestError(400, `The run ${name} has files other than ${RUN_FILES.join(', ')}.`)
+  }
+  const run: Record<string, string> = {}
+  for (const [file, contents] of Object.entries(files)) {
+    if (typeof contents !== 'string' || contents.length > MAX_FILE_LENGTH) {
+      throw new RequestError(413, `${name}/${file} is missing or too large.`)
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(contents)
+    }
+    catch {
+      throw new RequestError(400, `${name}/${file} is not JSON.`)
+    }
+    if (!isObject(parsed)) {
+      throw new RequestError(400, `${name}/${file} is not a JSON object.`)
+    }
+    run[file] = JSON.stringify(parsed)
+  }
+  const meta = run['meta.json'] && JSON.parse(run['meta.json']) as Record<string, unknown>
+  if (!meta || typeof meta.startTime !== 'number' || typeof meta.endTime !== 'number') {
+    throw new RequestError(400, `The run ${name} has no meta.json with its start and end times.`)
+  }
+  const stored = {
+    name,
+    slug: name,
+    startTime: meta.startTime,
+    endTime: meta.endTime,
+  }
+  run['meta.json'] = JSON.stringify(stored)
+  return { files: run, meta: stored }
+}
+
+/** The total of a Sonda report's output files, or nothing when the run has no such report. */
+function totalOf(json: string | undefined): Sizes | undefined {
+  const report = json && JSON.parse(json) as { resources?: unknown }
+  if (!report) {
+    return undefined
+  }
+  const total = { uncompressed: 0, gzip: 0, brotli: 0 }
+  for (const resource of Array.isArray(report.resources)
+    ? report.resources
+    : []) {
+    if (isObject(resource) && resource.kind === 'asset') {
+      for (const metric of ['uncompressed', 'gzip', 'brotli'] as const) {
+        const value = resource[metric]
+        total[metric] += typeof value === 'number' && Number.isFinite(value)
+          ? value
+          : 0
+      }
+    }
+  }
+  return total
+}
+
+function parseCommit(body: Record<string, unknown>): CommitUpload {
+  const { branch, sha, message, time, run } = body
+  if (typeof branch !== 'string' || !BRANCH_RE.test(branch)) {
+    throw new RequestError(400, 'The upload needs a branch named with letters, digits, `_`, `.` or `-`.')
+  }
+  if (typeof sha !== 'string' || !SHA_RE.test(sha)) {
+    throw new RequestError(400, 'The upload needs the full SHA of the commit the run was built from.')
+  }
+  if (message !== undefined && typeof message !== 'string') {
+    throw new RequestError(400, 'The commit message is not text.')
+  }
+  if (time !== undefined && (typeof time !== 'number' || !Number.isFinite(time) || time <= 0)) {
+    throw new RequestError(400, 'The commit time is not a valid time.')
+  }
+  // Each commit's reports are stored once, under its SHA, which names the run too.
+  const { files, meta } = parseRun(sha, run)
+  return {
+    kind: 'commit',
+    branch,
+    commit: {
+      sha,
+      message: message?.split('\n')[0]!.slice(0, 200) || undefined,
+      time: time ?? meta.endTime,
+      sizes: {
+        client: totalOf(files['client.json']),
+        nitro: totalOf(files['nitro.json']),
+      },
+    },
+    files,
+  }
+}
 
 /**
  * Checks an upload, which comes from a build of untrusted code: only known runs and files,
  * each a JSON object, within size limits. Every file is parsed and serialized again, so what
- * is stored is plain JSON whatever was sent.
+ * is stored is plain JSON whatever was sent. An upload is either the two runs of a pull request,
+ * or the run of a commit on a branch.
  */
 export function parseUpload(body: unknown): Upload {
   if (!isObject(body) || body.version !== 1) {
     throw new RequestError(400, 'The upload is not a version 1 upload.')
+  }
+  if (body.branch !== undefined) {
+    return parseCommit(body)
   }
   const { pull, sha, base, head, runs } = body
   if (!Number.isSafeInteger(pull) || (pull as number) <= 0) {
@@ -54,7 +182,8 @@ export function parseUpload(body: unknown): Upload {
     throw new RequestError(400, 'The upload must contain exactly the base and head runs.')
   }
 
-  const upload: Upload = {
+  const upload: PullUpload = {
+    kind: 'pull',
     pull: pull as number,
     sha: sha as string | undefined,
     base,
@@ -63,40 +192,10 @@ export function parseUpload(body: unknown): Upload {
     meta: {},
   }
   for (const name of [base, head]) {
-    const files = runs[name]
-    if (!isObject(files) || !Object.keys(files).every(file => RUN_FILES.includes(file))) {
-      throw new RequestError(400, `The run ${name} has files other than ${RUN_FILES.join(', ')}.`)
-    }
-    const run: Record<string, string> = {}
-    for (const [file, contents] of Object.entries(files)) {
-      if (typeof contents !== 'string' || contents.length > MAX_FILE_LENGTH) {
-        throw new RequestError(413, `${name}/${file} is missing or too large.`)
-      }
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(contents)
-      }
-      catch {
-        throw new RequestError(400, `${name}/${file} is not JSON.`)
-      }
-      if (!isObject(parsed)) {
-        throw new RequestError(400, `${name}/${file} is not a JSON object.`)
-      }
-      run[file] = JSON.stringify(parsed)
-    }
-    const meta = run['meta.json'] && JSON.parse(run['meta.json']) as Record<string, unknown>
-    if (!meta || typeof meta.startTime !== 'number' || typeof meta.endTime !== 'number') {
-      throw new RequestError(400, `The run ${name} has no meta.json with its start and end times.`)
-    }
     // The run is named after its place in the comparison, whatever name it was built with.
-    upload.meta[name] = {
-      name,
-      slug: name,
-      startTime: meta.startTime,
-      endTime: meta.endTime,
-    }
-    run['meta.json'] = JSON.stringify(upload.meta[name])
-    upload.runs[name] = run
+    const run = parseRun(name, runs[name])
+    upload.meta[name] = run.meta
+    upload.runs[name] = run.files
   }
   return upload
 }

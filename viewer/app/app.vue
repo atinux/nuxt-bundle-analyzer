@@ -1,15 +1,31 @@
 <script setup lang="ts">
 import type { SelectItem, TabsItem } from '@nuxt/ui'
 import type { Env, Metric, Run, RunData, Target } from '~/utils/data'
-import { clientChunks, fetchRun, fetchRuns, hostedPull, pages, serverChunks } from '~/utils/data'
+import { clientChunks, fetchRun, fetchRuns, hostedBranch, hostedPull, pages, serverChunks } from '~/utils/data'
 
-type View = 'pages' | 'chunks' | 'issues' | 'compare'
-const VIEWS: View[] = ['pages', 'chunks', 'issues', 'compare']
+type View = 'history' | 'pages' | 'chunks' | 'issues' | 'compare'
+
+/** The pull request the hosted viewer shows, when it is opened from one. */
+const pull = hostedPull()
+const pullLink = pull && { to: `https://github.com/${pull.owner}/${pull.repo}/pull/${pull.pull}`, label: `${pull.owner}/${pull.repo}#${pull.pull}` }
+/** The branch whose history the hosted viewer shows, which opens on its History view. */
+const branch = hostedBranch()
+const branchLink = branch && { to: `https://github.com/${branch.owner}/${branch.repo}/tree/${branch.branch}`, label: `${branch.owner}/${branch.repo}` }
+const VIEWS: View[] = branch
+  ? [
+      'history',
+      'pages',
+      'chunks',
+      'issues',
+      'compare',
+    ]
+  : ['pages', 'chunks', 'issues', 'compare']
+const DEFAULT_VIEW = VIEWS[0]!
 
 // The whole UI state lives in the URL, so a view can be shared or reloaded.
 const params = new URLSearchParams(location.search)
 const state = reactive({
-  view: (VIEWS.find(view => view === params.get('view')) ?? 'pages') as View,
+  view: VIEWS.find(view => view === params.get('view')) ?? DEFAULT_VIEW,
   run: params.get('run') ?? '',
   base: params.get('base') ?? '',
   env: (params.get('env') === 'nitro'
@@ -27,7 +43,7 @@ const state = reactive({
 
 watch(state, () => {
   const query = new URLSearchParams()
-  const defaults: Record<string, string> = { view: 'pages', env: 'client', metric: 'gzip' }
+  const defaults: Record<string, string> = { view: DEFAULT_VIEW, env: 'client', metric: 'gzip' }
   for (const [key, value] of Object.entries({ ...state, q: state.search, search: '' })) {
     if (value && value !== defaults[key]) {
       query.set(key, value)
@@ -57,12 +73,9 @@ function load(slug: string) {
   return cache.get(slug)!
 }
 
-/** The pull request the hosted viewer shows, when it is opened from one. */
-const pull = hostedPull()
-const pullLink = pull && { to: `https://github.com/${pull.owner}/${pull.repo}/pull/${pull.pull}`, label: `${pull.owner}/${pull.repo}#${pull.pull}` }
-// The hosted viewer only has the runs of pull requests, so its home page shows straight away,
-// rather than once a request says there is nothing to view.
-const loaded = ref(useRuntimeConfig().public.hosted && !pull)
+// The hosted viewer only has the runs of pull requests and branches, so its home page shows
+// straight away, rather than once a request says there is nothing to view.
+const loaded = ref(useRuntimeConfig().public.hosted && !pull && !branch)
 
 if (!loaded.value) {
   fetchRuns().then((list) => {
@@ -82,19 +95,38 @@ if (!loaded.value) {
 /** Nothing to view: the hosted viewer's home page, or `serve` before any analysis. */
 const empty = computed(() => loaded.value && runs.value.length === 0)
 
-/** Until the runs and their reports are in, which takes a few seconds for a large app's hosted comparison. */
-const loading = computed(() => !error.value && (!loaded.value || (runs.value.length > 0 && !data.value) || (state.view === 'compare' && runs.value.length > 1 && !baseData.value)))
+/**
+ * Until the runs and their reports are in, which takes a few seconds for a large app's hosted
+ * comparison. History only needs the list of commits, so it downloads no reports.
+ */
+const loading = computed(() => !error.value && (!loaded.value || (state.view !== 'history' && ((runs.value.length > 0 && !data.value) || (state.view === 'compare' && runs.value.length > 1 && !baseData.value)))))
 
 // Runs load asynchronously, so a run named in the URL is only found once they are there.
-watch(() => [state.run, runs.value] as const, async ([slug]) => {
+watch(() => [state.run, runs.value, state.view === 'history'] as const, async ([slug, , history]) => {
+  if (history) {
+    return
+  }
   data.value = await load(slug)
   if (data.value && !data.value.bundles[state.env]) {
     state.env = data.value.bundles.client ? 'client' : 'nitro'
   }
 }, { immediate: true })
-watch(() => [state.base, runs.value] as const, async ([slug]) => {
-  baseData.value = await load(slug)
+watch(() => [state.base, runs.value, state.view === 'history'] as const, async ([slug, , history]) => {
+  if (!history) {
+    baseData.value = await load(slug)
+  }
 }, { immediate: true })
+
+/** Compares a commit of the history with the one before it. */
+function compareCommit(sha: string) {
+  const index = runs.value.findIndex(run => run.slug === sha)
+  Object.assign(state, {
+    view: 'compare',
+    run: sha,
+    // Runs are newest first, so the commit before is the next one.
+    base: runs.value[index + 1]?.slug ?? state.base,
+  })
+}
 
 /** Pages are about the client build, which Nitro has no equivalent of. */
 const env = computed<Env>(() => state.view === 'pages'
@@ -167,29 +199,40 @@ const issueCount = computed(() => {
     : 0
 })
 const viewItems = computed<TabsItem[]>(() => [
+  ...branch
+    ? [
+        { label: 'History', value: 'history' },
+      ]
+    : [],
   { label: 'Pages', value: 'pages' },
   { label: 'Chunks', value: 'chunks' },
   { label: 'Issues', value: 'issues', badge: issueCount.value || undefined },
   { label: 'Compare', value: 'compare' },
 ])
+/** Whether there is a build to show: in the run, or in History, in any commit. */
+function hasBuild(of: Env) {
+  return state.view === 'history'
+    ? runs.value.some(run => run.commit?.sizes[of])
+    : !!data.value?.bundles[of]
+}
 const envItems = computed<TabsItem[]>(() => [
   {
     label: 'Client',
     value: 'client',
     icon: 'i-lucide-monitor',
-    disabled: !data.value?.bundles.client,
+    disabled: !hasBuild('client'),
   },
   {
     label: 'Nitro',
     value: 'nitro',
     icon: 'i-lucide-server',
-    disabled: !data.value?.bundles.nitro,
+    disabled: !hasBuild('nitro'),
   },
 ])
 const runItems = computed<SelectItem[]>(() => runs.value.map(run => ({
   label: `${run.name}${run.current ? ' (latest)' : ''}`,
   value: run.slug,
-  description: new Date(run.endTime).toLocaleString(),
+  description: run.commit?.message ?? new Date(run.endTime).toLocaleString(),
 })))
 // Raw is the size on disk: minified for the client build, as Nitro writes it for the server.
 const metricItems: TabsItem[] = [
@@ -217,6 +260,11 @@ const metricItems: TabsItem[] = [
                 <span class="sm:hidden">#{{ pull.pull }}</span>
                 <span class="max-sm:hidden">{{ pullLink.label }}</span>
               </ULink>
+              <ULink v-if="branch && branchLink" :to="branchLink.to" target="_blank" :aria-label="`Branch ${branch.branch} of ${branchLink.label} on GitHub`" class="ms-1 flex min-w-0 items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
+                <UIcon name="i-lucide-git-branch" class="size-4 shrink-0" aria-hidden="true" />
+                <span class="max-sm:hidden">{{ branchLink.label }}</span>
+                <span class="truncate">{{ branch.branch }}</span>
+              </ULink>
             </template>
             <template #right>
               <UTabs v-if="!empty" v-model="state.view" :items="viewItems" :content="false" size="xs" class="max-sm:hidden" />
@@ -236,23 +284,24 @@ const metricItems: TabsItem[] = [
                 <USelect v-model="state.base" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Base run" />
                 <UIcon name="i-lucide-arrow-right" class="size-4 text-muted shrink-0" />
               </template>
-              <USelect v-model="state.run" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Run" />
+              <!-- History shows every commit, so it has no run to pick. -->
+              <USelect v-if="state.view !== 'history'" v-model="state.run" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Run" />
               <UTabs v-if="state.view !== 'pages'" v-model="state.env" :items="envItems" :content="false" size="xs" />
               <UTabs v-model="state.metric" :items="metricItems" :content="false" size="xs" aria-label="Size" />
             </template>
             <template #right>
-              <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'pages' ? 'Search pages and files…' : state.view === 'issues' ? 'Search packages and files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
+              <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'issues' ? 'Search packages and files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
             </template>
           </UDashboardToolbar>
         </template>
 
         <template #body>
-          <UAlert v-if="error" color="error" variant="subtle" icon="i-lucide-circle-alert" title="Could not load the analysis" :description="pull ? `${error}. Reload this page to try again.` : `${error}. Check that nuxt-bundle-analyzer is still running, then reload this page.`" />
+          <UAlert v-if="error" color="error" variant="subtle" icon="i-lucide-circle-alert" title="Could not load the analysis" :description="pull || branch ? `${error}. Reload this page to try again.` : `${error}. Check that nuxt-bundle-analyzer is still running, then reload this page.`" />
 
           <!-- The shape of the views below, so the page doesn't jump once the reports are in. -->
           <div v-else-if="loading" role="status" class="space-y-6">
             <p class="text-sm text-muted">
-              {{ pull ? `Loading the comparison of #${pull.pull}…` : 'Loading the analysis…' }}
+              {{ pull ? `Loading the comparison of #${pull.pull}…` : branch ? (state.view === 'history' ? `Loading the history of ${branch.branch}…` : `Loading the analysis of ${runs.find(run => run.slug === state.run)?.name ?? branch.branch}…`) : 'Loading the analysis…' }}
             </p>
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <USkeleton v-for="card in 2" :key="card" class="h-24 rounded-lg motion-reduce:animate-none" />
@@ -272,7 +321,24 @@ const metricItems: TabsItem[] = [
             :description="`Nothing was uploaded for #${pull.pull} yet. The bundle size workflow uploads it once both builds are analyzed.`"
           />
 
+          <UEmpty
+            v-else-if="empty && branch"
+            icon="i-lucide-git-branch"
+            :title="`No History for ${branch.branch}`"
+            :description="`Nothing was uploaded for ${branch.branch} yet. Each push adds its commit once the workflow uploads its build.`"
+          />
+
           <HomeView v-else-if="empty" />
+
+          <HistoryView
+            v-else-if="state.view === 'history'"
+            :runs="runs"
+            :env="state.env"
+            :metric="state.metric"
+            :search="state.search"
+            :repository="`${branch!.owner}/${branch!.repo}`"
+            @compare="compareCommit"
+          />
 
           <template v-else-if="(state.view === 'pages' || state.view === 'chunks') && data && !chunks.length">
             <UEmpty
@@ -322,7 +388,7 @@ const metricItems: TabsItem[] = [
               v-if="runs.length < 2"
               icon="i-lucide-git-compare"
               title="Compare Needs Two Runs"
-              description="Make a change, then run nuxt analyze --name=after to compare it with this run."
+              :description="branch ? `The history of ${branch.branch} has one commit so far.` : 'Make a change, then run nuxt analyze --name=after to compare it with this run.'"
             />
             <Compare
               v-else-if="data && baseData"

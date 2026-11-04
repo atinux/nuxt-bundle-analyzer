@@ -94,12 +94,40 @@ Pull requests from forks can't get that token, so the upload runs in a workflow 
 
 Each upload replaces the previous one for that pull request.
 
+## History of a branch
+
+The hosted viewer can also keep a run for each commit pushed to a branch, and show how the bundle changed over them at `/<owner>/<repo>/tree/<branch>`, such as `https://bundle.nuxt.dev/nuxt/nuxt.com/tree/main`. Its **History** view plots the size after each commit and lists what each one changed; clicking a commit opens Compare with the commit before it.
+
+A push runs the branch's own code, so one job can analyze and upload:
+
+```yaml
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Install the app's dependencies, then:
+      - run: npx nuxt-bundle-analyzer --name=main --no-serve
+      - run: npx nuxt-bundle-analyzer upload --branch main --name main --url https://bundle.nuxt.dev
+```
+
+The upload sends the run with the commit's SHA (`--sha`, `GITHUB_SHA` by default), and the message and time git has for it, which order the history. To add earlier commits, run the same steps on each of them, for example from a `workflow_dispatch` workflow with a matrix of SHAs, checking out each one and passing `--sha`. Uploading a commit again replaces its run.
+
 ## Hosting the viewer
 
 The viewer is the Nuxt app in `viewer/`. Deploy it on Vercel with `viewer` as the root directory, and connect a Blob store to the project. Then set which workflows may upload, as `owner/repo/.github/workflows/<file>@<ref>`:
 
 ```bash
-NUXT_OIDC_ALLOWED_WORKFLOWS=nuxt/nuxt.com/.github/workflows/bundle-size-comment.yml@refs/heads/main
+NUXT_OIDC_ALLOWED_WORKFLOWS=nuxt/nuxt.com/.github/workflows/bundle-size-comment.yml@refs/heads/main,nuxt/nuxt.com/.github/workflows/bundle-size-history.yml@refs/heads/main
 ```
 
 Only a workflow on that ref can upload, so a pull request that edits the workflow can't. Uploads are stored under the repository named in the token, whatever the request says. The viewer checks every file before storing it, as the reports come from a build of the pull request's code.
