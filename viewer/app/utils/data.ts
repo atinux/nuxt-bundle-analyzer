@@ -422,13 +422,14 @@ function routeFiles(data: RunData, route: Route): Chunk[] {
   ]
 }
 
-type ChunkKind = 'entry' | 'page' | 'layout' | 'component' | 'shared' | 'nuxt' | 'route' | 'app' | 'nitro'
+type ChunkKind = 'entry' | 'page' | 'layout' | 'component' | 'asyncData' | 'shared' | 'nuxt' | 'route' | 'app' | 'nitro'
 
 export const chunkKindLabels: Record<ChunkKind, string> = {
   entry: 'Entry',
   page: 'Page',
   layout: 'Layout',
   component: 'Component',
+  asyncData: 'Async Data',
   shared: 'Shared',
   nuxt: 'Nuxt',
   // Nitro's server routes, such as `server/api/hello.ts`, its build of the Vue app, and its runtime.
@@ -493,6 +494,11 @@ export function sourceKind(part: Pick<Part, 'id' | 'package'>): SourceKind {
 
 const PAGES_RE = /(?:^|\/)pages\//
 const LAYOUTS_RE = /(?:^|\/)layouts\//
+/**
+ * Nuxt's `experimental.extractAsyncDataHandlers` moves each `useAsyncData` handler to its own
+ * chunk, in the folder of the file that calls it, such as `app/pages/async-data-chunk-3.js`.
+ */
+const ASYNC_DATA_CHUNK_RE = /(?:^|\/)async-data-chunk-\d+\.js$/
 
 function chunkKind(chunk: Chunk): ChunkKind {
   if (chunk.isEntry) {
@@ -500,6 +506,9 @@ function chunkKind(chunk: Chunk): ChunkKind {
   }
   if (!chunk.src) {
     return 'shared'
+  }
+  if (ASYNC_DATA_CHUNK_RE.test(chunk.src)) {
+    return 'asyncData'
   }
   if (chunk.src.includes('node_modules/')) {
     return 'nuxt'
