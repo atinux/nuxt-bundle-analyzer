@@ -209,8 +209,10 @@ const metricItems: TabsItem[] = [
         <template #header>
           <UDashboardNavbar :toggle="false">
             <template #title>
-              <img src="/favicon.svg" alt="Nuxt" class="size-6">
-              Bundle Analyzer
+              <ULink to="/" aria-label="Bundle Analyzer home" class="flex shrink-0 items-center gap-1.5">
+                <img src="/favicon.svg" alt="Nuxt" class="size-6">
+                Bundle Analyzer
+              </ULink>
               <!-- Narrow screens keep the pull request's number, so it stays clear which one this is. -->
               <ULink v-if="pull && pullLink" :to="pullLink.to" target="_blank" :aria-label="`Pull request ${pullLink.label} on GitHub`" class="ms-1 flex items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
                 <UIcon name="i-lucide-git-pull-request" class="size-4 shrink-0" aria-hidden="true" />
