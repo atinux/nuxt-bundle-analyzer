@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
       keys: keySets.get(oidc.jwksUrl)!,
     })
     // Without a Blob store, reports would go to the deployment's read-only disk.
-    if (process.env.VERCEL && !process.env.BLOB_READ_WRITE_TOKEN) {
+    if (process.env.VERCEL && !process.env.BLOB_STORE_ID && !process.env.BLOB_READ_WRITE_TOKEN) {
       throw new RequestError(503, 'This viewer has no Blob store to keep reports in. Connect a Vercel Blob store to its project, then redeploy it.')
     }
 
