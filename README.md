@@ -7,7 +7,26 @@ Sizes are measured by [Sonda](https://sonda.dev) on the final output, after mini
 > [!NOTE]
 > This package is experimental. Its options, the files it writes, and the upload format can change between releases.
 
-[See online demo of a comparison](https://bundle.nuxt.dev/nuxt/nuxt.com/pull/2593?view=compare&base=base&run=pr)
+[Open the online demo](https://bundle.nuxt.dev/nuxt/nuxt.com/pull/2593?view=compare&base=base&run=pr), which compares two builds of [nuxt.com](https://nuxt.com).
+
+## Features
+
+- **No setup:** one command builds your app for analysis and opens the analyzer. You don't install or configure anything.
+- **Pages:** each page with the size of its own chunk and of everything it loads before it renders, split into your files and dependencies.
+- **Chunks:** every JavaScript file of the client and Nitro builds, with the files and dependencies in it. Browse them by chunk, by file, or as a 3D city.
+- **Why it's included:** pick any file or package to see its size, the chunks it's in, the chain of imports that leads to it, and what imports it.
+- **Duplicate packages:** packages bundled more than once, with each version, what imports it, and the size of the extra copies.
+- **Circular imports:** loops of imports, the ones through your own files first.
+- **Compare two builds:** the difference for each route, package, and file, as tables or as a 3D city colored by what changed.
+- **[Pull request comparisons](#comparisons-on-pull-requests):** GitHub Actions uploads both builds to a hosted viewer, so a bot comment can link to the comparison. The repository needs no secret.
+- **Raw, gzip, and Brotli:** switch any view between the size on disk and the size after compression.
+- **Shareable views:** the URL keeps the whole view, so you can reload it or send it to someone.
+
+| Pages | Chunks in 3D |
+| --- | --- |
+| ![The files and dependencies of a page, with their sizes](./.github/assets/pages.png) | ![The chunks of the client build as a 3D city, one building per file or package](./.github/assets/chunks-3d.png) |
+| **Why it's included** | **Issues** |
+| ![The detail panel of a package, with the chain of imports that leads to it](./.github/assets/why-included.png) | ![Duplicate packages, with each version and what imports it](./.github/assets/issues.png) |
 
 ## Usage
 
@@ -30,6 +49,8 @@ npx nuxt-bundle-analyzer --name=after
 ```
 
 Compare shows the size difference for each route, package, and file.
+
+![Compare: the total size of both builds, and the difference in the initial load of each route](./.github/assets/compare.png)
 
 ## With `nuxi analyze`
 
