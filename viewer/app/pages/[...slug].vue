@@ -125,14 +125,26 @@ const empty = computed(() => loaded.value && runs.value.length === 0)
 const loading = computed(() => !error.value && (!loaded.value || (runs.value.length > 0 && !data.value) || (state.view === 'compare' && runs.value.length > 1 && !baseData.value)))
 
 // Runs load asynchronously, so a run named in the URL is only found once they are there.
-watch(() => [state.run, runs.value] as const, async ([slug]) => {
-  data.value = await load(slug)
-  if (data.value && !data.value.bundles[state.env]) {
-    state.env = data.value.bundles.client ? 'client' : 'nitro'
+// A run picked while another still downloads wins, even when the earlier one finishes last.
+watch(() => [state.run, runs.value] as const, async ([slug], _, onCleanup) => {
+  let picked = true
+  onCleanup(() => picked = false)
+  const run = await load(slug)
+  if (!picked) {
+    return
+  }
+  data.value = run
+  if (run && !run.bundles[state.env]) {
+    state.env = run.bundles.client ? 'client' : 'nitro'
   }
 }, { immediate: true })
-watch(() => [state.base, runs.value] as const, async ([slug]) => {
-  baseData.value = await load(slug)
+watch(() => [state.base, runs.value] as const, async ([slug], _, onCleanup) => {
+  let picked = true
+  onCleanup(() => picked = false)
+  const run = await load(slug)
+  if (picked) {
+    baseData.value = run
+  }
 }, { immediate: true })
 
 /** Pages are about the client build, which Nitro has no equivalent of. */
