@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Prepares an Amp orb: https://ampcode.com/docs/orbs
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+step() {
+  local start=$SECONDS
+  echo "==> $1"
+  shift
+  "$@"
+  echo "    done in $((SECONDS - start))s"
+}
+
+# The orb image ships Node.js. pnpm switches itself to the version `packageManager` pins.
+if ! command -v pnpm >/dev/null; then
+  step "Installing pnpm" npm install --global "$(node -p 'require("./package.json").packageManager')"
+fi
+
+step "Installing dependencies" pnpm install --frozen-lockfile
+# The tests import viewer code, which reads the tsconfig files `nuxt prepare` generates.
+step "Generating viewer types" pnpm --filter viewer exec nuxt prepare
