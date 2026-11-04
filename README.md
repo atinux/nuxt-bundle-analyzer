@@ -119,7 +119,11 @@ Each upload replaces the previous one for that pull request.
 
 ## Hosting the viewer
 
-The viewer is the Nuxt app in `viewer/`. Deploy it on Vercel with `viewer` as the root directory, and connect a Blob store to the project. Then set which workflows may upload, as `owner/repo/.github/workflows/<file>@<ref>`:
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fatinux%2Fnuxt-bundle-analyzer%2Ftree%2Fmain%2Fviewer&project-name=nuxt-bundle-analyzer&repository-name=nuxt-bundle-analyzer-viewer&env=NUXT_OIDC_ALLOWED_WORKFLOWS&envDescription=Comma-separated%20workflows%20allowed%20to%20upload%2C%20as%20owner%2Frepo%2F.github%2Fworkflows%2F%3Cfile%3E%40%3Cref%3E&envLink=https%3A%2F%2Fgithub.com%2Fatinux%2Fnuxt-bundle-analyzer%23hosting-the-viewer&stores=%5B%7B%22type%22%3A%22blob%22%2C%22access%22%3A%22public%22%7D%5D)
+
+The viewer is the Nuxt app in `viewer/`. The button copies it into a new repository, then deploys it on Vercel with a public Blob store for the reports. To deploy this repository instead, use `viewer` as the root directory and connect a public Blob store to the project.
+
+Either way, set which workflows may upload, as `owner/repo/.github/workflows/<file>@<ref>`:
 
 ```bash
 NUXT_OIDC_ALLOWED_WORKFLOWS=nuxt/nuxt.com/.github/workflows/bundle-size-comment.yml@refs/heads/main
