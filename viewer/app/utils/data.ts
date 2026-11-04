@@ -6,6 +6,16 @@ export interface Run {
   startTime: number
   endTime: number
   current: boolean
+  /** The commit the run was built from, in the history of a branch. */
+  commit?: Commit
+}
+
+/** A commit in the history of a branch, as the hosted viewer stores it with the total of each build. */
+export interface Commit {
+  sha: string
+  message?: string
+  time: number
+  sizes: Partial<Record<Env, Sizes>>
 }
 
 /** The reports `nuxt analyze` writes with Sonda, named after the bundle they describe. */
@@ -350,6 +360,7 @@ export function importChain(bundle: Bundle, id: string): { id: string, kind?: Im
 }
 
 const PULL_RE = /^\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/
+const TREE_RE = /^\/([\w.-]+)\/([\w.-]+)\/tree\/(\w[\w.-]*)\/?$/
 
 /** The pull request the hosted viewer shows, from its path, such as `/nuxt/nuxt.com/pull/1234`. */
 export function hostedPull() {
@@ -363,12 +374,16 @@ export function hostedPull() {
     : undefined
 }
 
-/** Where the runs are: `/data` from `nuxt-bundle-analyzer`, or the hosted viewer's store of a pull request. */
-function dataBase() {
-  const pull = hostedPull()
-  return pull
-    ? `/api/reports/${pull.owner}/${pull.repo}/pull/${pull.pull}`
-    : '/data'
+/** The branch whose history the hosted viewer shows, from its path, such as `/nuxt/nuxt.com/tree/main`. */
+export function hostedBranch() {
+  const [, owner, repo, branch] = TREE_RE.exec(location.pathname) ?? []
+  return owner && repo && branch
+    ? {
+        owner,
+        repo,
+        branch,
+      }
+    : undefined
 }
 
 async function fetchJson<T>(url: string): Promise<T | undefined> {
@@ -378,12 +393,43 @@ async function fetchJson<T>(url: string): Promise<T | undefined> {
     : undefined
 }
 
-export function fetchRuns() {
-  return fetchJson<Run[]>(`${dataBase()}/runs.json`).then(runs => runs ?? [])
+/**
+ * The runs to view, newest first: from `nuxt-bundle-analyzer` in `/data`, the hosted viewer's
+ * store of a pull request, or one run for each commit in the history of a branch.
+ */
+export async function fetchRuns(): Promise<Run[]> {
+  const pull = hostedPull()
+  const branch = hostedBranch()
+  if (branch) {
+    const history = await fetchJson<Commit[]>(`/api/reports/${branch.owner}/${branch.repo}/tree/${branch.branch}/history.json`) ?? []
+    return history.map((commit, index) => ({
+      name: commit.sha.slice(0, 7),
+      slug: commit.sha,
+      startTime: commit.time,
+      endTime: commit.time,
+      current: index === history.length - 1,
+      commit,
+    })).reverse()
+  }
+  const runs = await fetchJson<Run[]>(pull
+    ? `/api/reports/${pull.owner}/${pull.repo}/pull/${pull.pull}/runs.json`
+    : '/data/runs.json')
+  return runs ?? []
+}
+
+/** Where the files of a run are. */
+function runBase(run: Run) {
+  const pull = hostedPull()
+  const branch = hostedBranch()
+  return branch
+    ? `/api/reports/${branch.owner}/${branch.repo}/commit/${run.slug}`
+    : pull
+      ? `/api/reports/${pull.owner}/${pull.repo}/pull/${pull.pull}/${encodeURIComponent(run.slug)}`
+      : `/data/${encodeURIComponent(run.slug)}`
 }
 
 export async function fetchRun(run: Run): Promise<RunData> {
-  const base = `${dataBase()}/${encodeURIComponent(run.slug)}`
+  const base = runBase(run)
   const envs = ['client', 'nitro'] as const
   const [reports, nuxt] = await Promise.all([
     Promise.all(envs.map(env => fetchJson<SondaReport>(`${base}/${env}.json`))),

@@ -1,6 +1,8 @@
 import type { CryptoKey, JWTPayload } from 'jose'
 
+import type { CommitUpload, PullUpload } from '../viewer/server/utils/reports'
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
+
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { verifyGitHubToken } from '../viewer/server/utils/oidc'
@@ -118,7 +120,7 @@ function valid() {
 
 describe('parseUpload', () => {
   it('keeps the files of both runs, rewritten as plain JSON and named after their place in the comparison', () => {
-    const parsed = parseUpload(upload(valid()))
+    const parsed = parseUpload(upload(valid())) as PullUpload
     expect(parsed.runs.base!['client.json']).toBe('{"resources":[]}')
     expect(JSON.parse(parsed.runs.base!['meta.json']!)).toEqual({
       name: 'base',
@@ -188,5 +190,89 @@ describe('parseUpload', () => {
     expect(() => parseUpload(body())).toThrow(expect.objectContaining({
       statusCode: expect.any(Number),
     }))
+  })
+})
+
+const SHA = 'a0d0b17aa86c4f3e7d1b2a6c9e8f0d1c2b3a4f5e'
+
+function commitUpload(extra: Record<string, unknown> = {}) {
+  return {
+    version: 1,
+    branch: 'main',
+    sha: SHA,
+    run: {
+      'meta.json': meta('main'),
+      'client.json': JSON.stringify({
+        resources: [
+          {
+            kind: 'asset',
+            name: '_nuxt/entry.js',
+            uncompressed: 100,
+            gzip: 30,
+            brotli: 20,
+          },
+          {
+            kind: 'asset',
+            name: '_nuxt/entry.css',
+            uncompressed: 50,
+            gzip: 10,
+            brotli: 5,
+          },
+          // The parts of an output file, which its size already counts.
+          {
+            kind: 'chunk',
+            name: 'app.vue',
+            parent: '_nuxt/entry.js',
+            uncompressed: 999,
+            gzip: 999,
+            brotli: 999,
+          },
+        ],
+      }),
+    },
+    ...extra,
+  }
+}
+
+describe('parseUpload of a commit', () => {
+  it('sums the output files of each build, and leaves out a build the run has no report of', () => {
+    const parsed = parseUpload(commitUpload({ message: 'feat: charts (#12)\n\nA longer body', time: 1_700_000_000_000 })) as CommitUpload
+    expect(parsed.commit).toEqual({
+      sha: SHA,
+      message: 'feat: charts (#12)',
+      time: 1_700_000_000_000,
+      sizes: {
+        client: { uncompressed: 150, gzip: 40, brotli: 25 },
+        nitro: undefined,
+      },
+    })
+    expect(JSON.parse(parsed.files['meta.json']!)).toMatchObject({ name: SHA, slug: SHA })
+  })
+
+  it('places a commit without a time when it was built', () => {
+    expect((parseUpload(commitUpload()) as CommitUpload).commit.time).toBe(2)
+  })
+
+  it.each([
+    [
+      'a branch with a path in it',
+      { branch: '../main' },
+    ],
+    [
+      'a branch with a slash',
+      { branch: 'feat/charts' },
+    ],
+    [
+      'a short SHA',
+      {
+        sha: SHA.slice(0, 7),
+      },
+    ],
+    [
+      'a time that is not a number',
+      { time: '2026-11-04' },
+    ],
+  ])('rejects %s', (_, extra) => {
+    expect(() => parseUpload(commitUpload(extra))).toThrow(expect.objectContaining({ statusCode: 400 }))
   })
 })

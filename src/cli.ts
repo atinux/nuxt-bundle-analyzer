@@ -9,14 +9,14 @@ import { join, resolve } from 'pathe'
 import bundleAnalyzer from './module'
 import { defaultRunsDir, toSlug } from './runs'
 import { serve } from './serve'
-import { upload } from './upload'
+import { readCommit, upload } from './upload'
 
 const HELP = `Usage: nuxt-bundle-analyzer [command] [rootDir] [options]
 
 Commands:
   analyze   Build the app with analysis and open the analyzer (default)
   serve     Open the analyzer on the runs already written
-  upload    Send two runs to a hosted viewer from GitHub Actions
+  upload    Send runs to a hosted viewer from GitHub Actions
 
 Options for analyze:
   --name <name>        Name of the run, to keep several and compare them (default: default)
@@ -30,12 +30,14 @@ Options for analyze and serve:
   --allowed-host <host>  Also answer this host, such as a tunnel; a leading dot allows subdomains (repeatable)
 
 Options for upload:
-  --runs <dir>     Directory with one directory per run (default: node_modules/.cache/nuxt-bundle-analyzer)
-  --base <name>    Run to compare against (default: base)
-  --head <name>    Run with the change (default: pr)
-  --pr <number>    Pull request the comparison is for
-  --url <url>      Hosted viewer (default: NUXT_BUNDLE_ANALYZER_URL)
-  --sha <sha>      Commit the head run was built from
+  --runs <dir>      Directory with one directory per run (default: node_modules/.cache/nuxt-bundle-analyzer)
+  --url <url>       Hosted viewer (default: NUXT_BUNDLE_ANALYZER_URL)
+  --pr <number>     Pull request the comparison is for
+  --base <name>     Run to compare against (default: base)
+  --head <name>     Run with the change (default: pr)
+  --sha <sha>       Commit the head run, or with --branch the run, was built from
+  --branch <name>   Instead of a pull request, add the run --name to this branch's history,
+                    as built from --sha (default: GITHUB_SHA)
 `
 
 const { values, positionals } = parseArgs({
@@ -56,6 +58,7 @@ const { values, positionals } = parseArgs({
     'pr': { type: 'string' },
     'url': { type: 'string' },
     'sha': { type: 'string' },
+    'branch': { type: 'string' },
     'help': { type: 'boolean', short: 'h' },
   },
 })
@@ -154,17 +157,38 @@ async function main() {
   if (command === 'upload') {
     const url = values.url ?? process.env.NUXT_BUNDLE_ANALYZER_URL
     const pull = Number(values.pr)
-    if (!url || !Number.isSafeInteger(pull) || pull <= 0) {
-      throw new Error('upload needs --url (or NUXT_BUNDLE_ANALYZER_URL) and --pr <number>.')
+    let link: string
+    if (url && values.branch) {
+      const sha = values.sha ?? process.env.GITHUB_SHA
+      if (!sha) {
+        throw new Error('upload --branch needs --sha <sha> (or GITHUB_SHA) of the commit the run was built from.')
+      }
+      // The history is in the order of the commits, so a commit git does not have falls back to when it was built.
+      const commit = readCommit(rootDir, sha)
+      if (!commit.time) {
+        console.warn(`git has no commit ${sha} in ${rootDir}, so the history places it when it was built.`)
+      }
+      link = await upload({
+        runsDir,
+        url,
+        branch: values.branch,
+        name: toSlug(values.name),
+        ...commit,
+      })
     }
-    const link = await upload({
-      runsDir,
-      base: values.base,
-      head: values.head,
-      pull,
-      url,
-      sha: values.sha,
-    })
+    else if (url && Number.isSafeInteger(pull) && pull > 0) {
+      link = await upload({
+        runsDir,
+        url,
+        base: values.base,
+        head: values.head,
+        pull,
+        sha: values.sha,
+      })
+    }
+    else {
+      throw new Error('upload needs --url (or NUXT_BUNDLE_ANALYZER_URL), and --pr <number> or --branch <name>.')
+    }
     console.log(link)
     // In GitHub Actions, later steps read the link as `steps.<id>.outputs.url`.
     if (process.env.GITHUB_OUTPUT) {

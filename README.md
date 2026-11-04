@@ -21,6 +21,7 @@ https://github.com/user-attachments/assets/db6b95b7-0e33-4a54-9a60-69192bb6becf
 - **Circular imports:** loops of imports, the ones through your own files first.
 - **Compare two builds:** the difference for each route, package, and file, as tables or as a 3D city colored by what changed.
 - **[Pull request comparisons](#comparisons-on-pull-requests):** GitHub Actions uploads both builds to a hosted viewer, so a bot comment can link to the comparison. The repository needs no secret.
+- **[Branch history](#history-of-a-branch):** GitHub Actions uploads a build of each commit pushed to a branch. The hosted viewer charts the size after each commit, and you can open what any commit changed.
 - **Raw, gzip, and Brotli:** switch any view between the size on disk and the size after compression.
 - **Shareable views:** the URL keeps the whole view, so you can reload it or send it to someone.
 
@@ -117,6 +118,36 @@ Pull requests from forks can't get that token, so the upload runs in a workflow 
 
 Each upload replaces the previous one for that pull request.
 
+## History of a branch
+
+The hosted viewer can also keep a run for each commit pushed to a branch, and show how the bundle changed over them at `/<owner>/<repo>/tree/<branch>`, such as `https://bundle.nuxt.dev/nuxt/nuxt.com/tree/main`. Its **History** view plots the size after each commit and lists what each one changed; clicking a commit opens Compare with the commit before it.
+
+![History: the size of the client build after each commit on main, with the commit that removed 725 kB highlighted](./.github/assets/history.png)
+
+A push runs the branch's own code, so one job can analyze and upload:
+
+```yaml
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Install the app's dependencies, then:
+      - run: npx nuxt-bundle-analyzer --name=main --no-serve
+      - run: npx nuxt-bundle-analyzer upload --branch main --name main --url https://bundle.nuxt.dev
+```
+
+The upload sends the run with the commit's SHA (`--sha`, `GITHUB_SHA` by default), and the message and time git has for it, which order the history. To add earlier commits, run the same steps on each of them, for example from a `workflow_dispatch` workflow with a matrix of SHAs, checking out each one and passing `--sha`. Uploading a commit again replaces its run.
+
 ## Hosting the viewer
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fatinux%2Fnuxt-bundle-analyzer%2Ftree%2Fmain%2Fviewer&project-name=nuxt-bundle-analyzer&repository-name=nuxt-bundle-analyzer-viewer&env=NUXT_OIDC_ALLOWED_WORKFLOWS&envDescription=Comma-separated%20workflows%20allowed%20to%20upload%2C%20as%20owner%2Frepo%2F.github%2Fworkflows%2F%3Cfile%3E%40%3Cref%3E&envLink=https%3A%2F%2Fgithub.com%2Fatinux%2Fnuxt-bundle-analyzer%23hosting-the-viewer&stores=%5B%7B%22type%22%3A%22blob%22%2C%22access%22%3A%22public%22%7D%5D)
@@ -126,7 +157,7 @@ The viewer is the Nuxt app in `viewer/`. The button copies it into a new reposit
 Either way, set which workflows may upload, as `owner/repo/.github/workflows/<file>@<ref>`:
 
 ```bash
-NUXT_OIDC_ALLOWED_WORKFLOWS=nuxt/nuxt.com/.github/workflows/bundle-size-comment.yml@refs/heads/main
+NUXT_OIDC_ALLOWED_WORKFLOWS=nuxt/nuxt.com/.github/workflows/bundle-size-comment.yml@refs/heads/main,nuxt/nuxt.com/.github/workflows/bundle-size-history.yml@refs/heads/main
 ```
 
 Only a workflow on that ref can upload, so a pull request that edits the workflow can't. Uploads are stored under the repository named in the token, whatever the request says. The viewer checks every file before storing it, as the reports come from a build of the pull request's code.
