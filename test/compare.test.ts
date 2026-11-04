@@ -2,7 +2,7 @@ import type { Bundle, Part, RunData } from '../viewer/app/utils/data'
 
 import { describe, expect, it } from 'vitest'
 
-import { locationChanges, normalizeId, packageOf, routeChanges } from '../viewer/app/utils/data'
+import { clientChunks, locationChanges, normalizeId, packageOf, pages, routeChanges } from '../viewer/app/utils/data'
 
 function part(asset: string, id: string, gzip: number, pkg?: string): Part {
   return {
@@ -111,6 +111,18 @@ describe('routeChanges', () => {
         delta: 10,
       },
     ])
+  })
+})
+
+describe('pages', () => {
+  it('leaves out the async data handlers Nuxt extracts next to a page', () => {
+    const data = run('pr', [], { '_nuxt/entry.js': 300, '_nuxt/stats.js': 100, '_nuxt/async-data-chunk-0.js': 40 })
+    data.chunks['_nuxt/stats.js']!.src = 'app/pages/stats.vue'
+    data.chunks['_nuxt/stats.js']!.dynamicImports = ['_nuxt/async-data-chunk-0.js']
+    data.chunks['_nuxt/async-data-chunk-0.js']!.src = 'app/pages/async-data-chunk-0.js'
+    const list = pages(data, clientChunks(data))
+    expect(list.map(page => page.file)).toEqual(['app/pages/stats.vue'])
+    expect(list[0]!.lazy.map(chunk => chunk.kind)).toEqual(['asyncData'])
   })
 })
 
