@@ -60,6 +60,10 @@ function load(slug: string) {
 /** The pull request the hosted viewer shows, when it is opened from one. */
 const pull = hostedPull()
 const pullLink = pull && { to: `https://github.com/${pull.owner}/${pull.repo}/pull/${pull.pull}`, label: `${pull.owner}/${pull.repo}#${pull.pull}` }
+/** Where the title links: the pull request's own page without the view's query, or `/` for the package's viewer. */
+const homeLink = pull
+  ? `/${pull.owner}/${pull.repo}/pull/${pull.pull}`
+  : '/'
 // The hosted viewer only has the runs of pull requests, so its home page shows straight away,
 // rather than once a request says there is nothing to view.
 const loaded = ref(useRuntimeConfig().public.hosted && !pull)
@@ -209,7 +213,7 @@ const metricItems: TabsItem[] = [
         <template #header>
           <UDashboardNavbar :toggle="false">
             <template #title>
-              <ULink to="/" aria-label="Bundle Analyzer home" class="flex shrink-0 items-center gap-1.5">
+              <ULink :to="homeLink" aria-label="Bundle Analyzer home" class="flex shrink-0 items-center gap-1.5">
                 <img src="/favicon.svg" alt="Nuxt" class="size-6">
                 Bundle Analyzer
               </ULink>
