@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ChunkInfo, Env, Metric, RunData, Source, Target } from '~/utils/data'
-import { clientChunks, formatBytes, formatDelta, locationChanges, routeChanges, routeSize, serverChunks } from '~/utils/data'
+import { clientChunks, formatBytes, formatDelta, locationChanges, pages, pagesDir, routeChanges, routeSize, serverChunks } from '~/utils/data'
 
 const props = defineProps<{
   base: RunData
@@ -12,8 +12,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   inspect: [target: Target]
-  /** Show the page a route renders in the current run. */
-  openRoute: [path: string]
   openChunk: [file: string]
 }>()
 
@@ -45,6 +43,8 @@ interface Row {
   status: 'added' | 'removed' | 'changed' | 'same'
   /** The file or package the row is about, to show its details. */
   target?: Target
+  /** The page a route renders, whose row shows it to open its details. */
+  page?: string
 }
 
 function toRow(key: string, base: number | undefined, current: number | undefined): Row {
@@ -63,7 +63,26 @@ function toRow(key: string, base: number | undefined, current: number | undefine
   }
 }
 
-const routes = computed<Row[]>(() => {
+/** The page file each route renders, which its row shows to open the page's details. */
+const pageFiles = computed(() => {
+  const files = new Map<string, string>()
+  if (props.env !== 'client') {
+    return files
+  }
+  // The base run first, so a route it has and the current run dropped still shows the page it
+  // rendered, and the panel can describe it from that run.
+  for (const data of [props.base, props.current]) {
+    for (const page of pages(data, chunksOf(data))) {
+      for (const route of page.routes) {
+        files.set(route, page.file)
+      }
+    }
+  }
+  return files
+})
+
+/** Every route of both runs, the largest difference first, before the search. */
+const allRoutes = computed<Row[]>(() => {
   if (props.env !== 'client') {
     return []
   }
@@ -77,8 +96,20 @@ const routes = computed<Row[]>(() => {
       ...props.base.routes,
     ].map(route => route.path)),
   ]
-  return paths.map(path => toRow(path, sizeOf(props.base, path), sizeOf(props.current, path)))
+  return paths
+    .map(path => ({
+      ...toRow(path, sizeOf(props.base, path), sizeOf(props.current, path)),
+      page: pageFiles.value.get(path),
+    }))
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+})
+
+/** The routes the search keeps: its path, or the page file that renders it. */
+const routes = computed(() => {
+  const query = props.search.trim().toLowerCase()
+  return query
+    ? allRoutes.value.filter(row => [row.key, row.page].some(text => text?.toLowerCase().includes(query)))
+    : allRoutes.value
 })
 
 const rows = computed<Row[]>(() => {
@@ -230,7 +261,7 @@ function percent(delta: number, base: number) {
     @open-chunk="file => emit('openChunk', file)"
   />
 
-  <UCard v-if="show === 'tables' && routes.length" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+  <UCard v-if="show === 'tables' && allRoutes.length" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
     <template #header>
       <h3 class="text-base text-highlighted">
         Initial Load per Route
@@ -260,7 +291,8 @@ function percent(delta: number, base: number) {
         </thead>
         <tbody>
           <template v-for="row in routes" :key="row.key">
-            <tr class="border-b border-default last:border-0">
+            <!-- The whole row opens the route's changes, as a page or a chunk row does. -->
+            <tr class="cursor-pointer border-b border-default last:border-0" @click="toggle(`route:${row.key}`)">
               <td class="px-4 py-2">
                 <div class="flex min-w-32 items-center gap-2">
                   <UButton
@@ -270,12 +302,17 @@ function percent(delta: number, base: number) {
                     size="xs"
                     :aria-expanded="expanded.has(`route:${row.key}`)"
                     :aria-label="`Show where the difference of ${row.key} comes from`"
-                    @click="toggle(`route:${row.key}`)"
+                    @click.stop="toggle(`route:${row.key}`)"
                   />
-                  <button v-if="row.current !== undefined" class="font-mono text-xs text-left break-all hover:text-primary hover:underline" :title="`Show the page of ${row.key}`" @click="emit('openRoute', row.key)">
-                    {{ row.key }}
-                  </button>
-                  <code v-else class="text-xs break-all">{{ row.key }}</code>
+                  <span class="min-w-0">
+                    <span class="block font-mono text-xs break-all">{{ row.key }}</span>
+                    <!-- The page it renders opens its details, as the name of a package does. -->
+                    <button v-if="row.page" class="flex max-w-full items-center gap-1.5 font-mono text-xs text-muted hover:text-primary hover:underline" :title="`Show details of ${row.page}`" @click.stop="emit('inspect', { kind: 'file', id: row.page })">
+                      <FileIcon :path="row.page" class="size-3.5 shrink-0" />
+                      <!-- Narrow screens leave out the pages directory, as Pages does, so the row fits. -->
+                      <span class="wrap-anywhere"><span class="max-sm:hidden">{{ pagesDir(row.page) }}</span>{{ row.page.slice(pagesDir(row.page).length) }}</span>
+                    </button>
+                  </span>
                 </div>
               </td>
               <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden">
@@ -313,6 +350,11 @@ function percent(delta: number, base: number) {
               </td>
             </tr>
           </template>
+          <tr v-if="!routes.length">
+            <td colspan="4" class="px-4 py-6 text-center text-muted">
+              No routes match this search.
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>

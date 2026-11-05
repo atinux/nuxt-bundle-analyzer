@@ -23,12 +23,18 @@ const VIEWS: View[] = branch
 const DEFAULT_VIEW = VIEWS[0]!
 
 const route = useRoute()
+const router = useRouter()
+
+/** The view a query names, which is the default one when it names none. */
+function viewOf(params: URLSearchParams) {
+  return VIEWS.find(view => view === params.get('view')) ?? DEFAULT_VIEW
+}
 
 /** The viewer's state for the current URL, so navigating re-reads it client-side. */
 function stateFromQuery() {
   const params = new URLSearchParams(location.search)
   return {
-    view: VIEWS.find(view => view === params.get('view')) ?? DEFAULT_VIEW,
+    view: viewOf(params),
     run: params.get('run') ?? '',
     base: params.get('base') ?? '',
     env: (params.get('env') === 'nitro'
@@ -72,9 +78,19 @@ watch(state, () => {
   }
   // Keep vue-router's own history state, so its back and forward navigation keeps working,
   // and leave the path alone when every parameter is at its default.
-  history.replaceState(history.state, '', query.size
+  const url = query.size
     ? `?${query}`
-    : location.pathname)
+    : location.pathname
+  // A view picked in the app gets an entry of its own, so the browser's back returns to the view it
+  // came from. Everything else stays in the entry it is already in, so typing in the search field,
+  // a metric or a picked run is not a navigation. Back and forward restore a view by re-reading the
+  // URL, which already names it, so they only ever replace.
+  if (state.view === viewOf(new URLSearchParams(location.search))) {
+    history.replaceState(history.state, '', url)
+  }
+  else {
+    history.pushState(history.state, '', url)
+  }
 }, { deep: true })
 
 function load(slug: string) {
@@ -116,12 +132,37 @@ if (!loaded.value) {
   fetchAllRuns()
 }
 
-// The path decides which pull request the hosted viewer shows and the query holds the whole UI
-// state, so a NuxtLink's navigation to the home page re-reads both, without reloading the app.
-watch(() => route.fullPath, () => {
+/** Re-reads the state from the URL, which holds all of it. */
+function readState() {
   Object.assign(state, stateFromQuery())
   pickRuns()
-})
+}
+
+// The path decides which pull request the hosted viewer shows and the query holds the whole UI
+// state, so a NuxtLink's navigation to the home page re-reads both, without reloading the app.
+watch(() => route.fullPath, readState)
+
+// Back and forward change the URL without the router reporting it: the entries the app writes are
+// not the router's own, so it can find the URL it restores to be the one it already shows and skip
+// the navigation that would tell the page about it.
+window.addEventListener('popstate', readState)
+onBeforeUnmount(() => window.removeEventListener('popstate', readState))
+
+/** The home page's URL, which the title links to. */
+const home = router.resolve('/').fullPath
+
+/**
+ * The title's link home. The router skips a link to the URL it already shows, and the app moves on
+ * from that URL on its own, so when the router would skip it, the app goes home itself.
+ */
+function openHome(event: MouseEvent) {
+  if (route.fullPath !== home || location.pathname + location.search === home) {
+    return
+  }
+  event.preventDefault()
+  history.pushState(history.state, '', home)
+  readState()
+}
 
 /** Nothing to view: the hosted viewer's home page, or `serve` before any analysis. */
 const empty = computed(() => loaded.value && runs.value.length === 0)
@@ -217,13 +258,6 @@ async function openChunk(file: string) {
   await nextTick()
   focusedChunk.value = file
 }
-const focusedRoute = ref<string>()
-async function openRoute(path: string) {
-  state.view = 'pages'
-  focusedRoute.value = undefined
-  await nextTick()
-  focusedRoute.value = path
-}
 
 const inspected = computed<Target | undefined>(() => state.package
   ? { kind: 'package', id: state.package }
@@ -307,55 +341,63 @@ const metricItems: TabsItem[] = [
     <!-- On phones the page scrolls as a document rather than inside the panel, so the browser can
          collapse its toolbar and the footer clears floating bars such as Arc's. -->
     <UDashboardGroup class="max-sm:static max-sm:overflow-visible">
-      <!-- The body scrolls, so its sections keep their height instead of shrinking to fit it. -->
-      <UDashboardPanel id="main" :ui="{ body: 'tabular-nums *:shrink-0 max-sm:overflow-visible' }">
+      <!-- The body scrolls, so its sections keep their height instead of shrinking to fit it. It is
+           positioned, so an absolutely positioned element inside it, such as a row's screen-reader
+           label, stays in its scroll area: outside of it, the element grows the dashboard group's
+           scroll area instead, which `scrollIntoView` then scrolls, pushing the header out of view. -->
+      <UDashboardPanel id="main" :ui="{ body: 'relative tabular-nums *:shrink-0 max-sm:overflow-visible' }">
         <template #header>
-          <UDashboardNavbar :toggle="false">
-            <template #title>
-              <!-- Raw, so the title keeps its color instead of the link's active one on the home page. -->
-              <ULink to="/" raw aria-label="Bundle Analyzer home" class="flex shrink-0 items-center gap-1.5">
-                <img src="/favicon.svg" alt="Nuxt" class="size-6">
-                Bundle Analyzer
-              </ULink>
-              <!-- Narrow screens keep the pull request's number, so it stays clear which one this is. -->
-              <ULink v-if="pull && pullLink" :to="pullLink.to" target="_blank" :aria-label="`Pull request ${pullLink.label} on GitHub`" class="ms-1 flex items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
-                <UIcon name="i-lucide-git-pull-request" class="size-4 shrink-0" aria-hidden="true" />
-                <span class="sm:hidden">#{{ pull.pull }}</span>
-                <span class="max-sm:hidden">{{ pullLink.label }}</span>
-              </ULink>
-              <ULink v-if="branch && branchLink" :to="branchLink.to" target="_blank" :aria-label="`Branch ${branch.branch} of ${branchLink.label} on GitHub`" class="ms-1 flex min-w-0 items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
-                <UIcon name="i-lucide-git-branch" class="size-4 shrink-0" aria-hidden="true" />
-                <span class="max-sm:hidden">{{ branchLink.label }}</span>
-                <span class="truncate">{{ branch.branch }}</span>
-              </ULink>
-            </template>
-            <template #right>
-              <UTabs v-if="!empty" v-model="state.view" :items="viewItems" :content="false" size="xs" class="max-sm:hidden" />
-              <UColorModeButton />
-            </template>
-          </UDashboardNavbar>
-
-          <!-- Narrow screens give the views a row of their own, so the title keeps its room. -->
-          <div v-if="!empty" class="border-b border-default px-4 py-2 sm:hidden">
-            <UTabs v-model="state.view" :items="viewItems" :content="false" size="xs" :ui="{ list: 'w-full', trigger: 'flex-1 justify-center' }" />
-          </div>
-
-          <!-- The controls wrap on narrow screens instead of scrolling out of view. -->
-          <UDashboardToolbar v-if="!empty" :ui="{ root: 'flex-wrap gap-y-2 py-2', left: 'flex-wrap gap-y-2', right: 'max-sm:w-full' }">
-            <template #left>
-              <template v-if="state.view === 'compare'">
-                <USelect v-model="state.base" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Base run" />
-                <UIcon name="i-lucide-arrow-right" class="size-4 text-muted shrink-0" />
+          <!-- Sticky where the body scrolls under it, so a scroll of the dashboard group, which an
+               absolutely positioned element escaping the body could still cause, cannot carry the
+               header out of view. Phones scroll the document, which brings the header back itself. -->
+          <div class="sticky top-0 z-10 shrink-0 bg-default max-sm:static">
+            <UDashboardNavbar :toggle="false">
+              <template #title>
+                <!-- Raw, so the title keeps its color instead of the link's active one on the home page. -->
+                <ULink to="/" raw aria-label="Bundle Analyzer home" class="flex shrink-0 items-center gap-1.5" @click="openHome">
+                  <img src="/favicon.svg" alt="Nuxt" class="size-6">
+                  Bundle Analyzer
+                </ULink>
+                <!-- Narrow screens keep the pull request's number, so it stays clear which one this is. -->
+                <ULink v-if="pull && pullLink" :to="pullLink.to" target="_blank" :aria-label="`Pull request ${pullLink.label} on GitHub`" class="ms-1 flex items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
+                  <UIcon name="i-lucide-git-pull-request" class="size-4 shrink-0" aria-hidden="true" />
+                  <span class="sm:hidden">#{{ pull.pull }}</span>
+                  <span class="max-sm:hidden">{{ pullLink.label }}</span>
+                </ULink>
+                <ULink v-if="branch && branchLink" :to="branchLink.to" target="_blank" :aria-label="`Branch ${branch.branch} of ${branchLink.label} on GitHub`" class="ms-1 flex min-w-0 items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
+                  <UIcon name="i-lucide-git-branch" class="size-4 shrink-0" aria-hidden="true" />
+                  <span class="max-sm:hidden">{{ branchLink.label }}</span>
+                  <span class="truncate">{{ branch.branch }}</span>
+                </ULink>
               </template>
-              <!-- History shows every commit, so it has no run to pick. -->
-              <USelect v-if="state.view !== 'history'" v-model="state.run" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Run" />
-              <UTabs v-if="state.view !== 'pages'" v-model="state.env" :items="envItems" :content="false" size="xs" />
-              <UTabs v-model="state.metric" :items="metricItems" :content="false" size="xs" aria-label="Size" />
-            </template>
-            <template #right>
-              <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'issues' ? 'Search packages and files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
-            </template>
-          </UDashboardToolbar>
+              <template #right>
+                <UTabs v-if="!empty" v-model="state.view" :items="viewItems" :content="false" size="xs" class="max-sm:hidden" />
+                <UColorModeButton />
+              </template>
+            </UDashboardNavbar>
+
+            <!-- Narrow screens give the views a row of their own, so the title keeps its room. -->
+            <div v-if="!empty" class="border-b border-default px-4 py-2 sm:hidden">
+              <UTabs v-model="state.view" :items="viewItems" :content="false" size="xs" :ui="{ list: 'w-full', trigger: 'flex-1 justify-center' }" />
+            </div>
+
+            <!-- The controls wrap on narrow screens instead of scrolling out of view. -->
+            <UDashboardToolbar v-if="!empty" :ui="{ root: 'flex-wrap gap-y-2 py-2', left: 'flex-wrap gap-y-2', right: 'max-sm:w-full' }">
+              <template #left>
+                <template v-if="state.view === 'compare'">
+                  <USelect v-model="state.base" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Base run" />
+                  <UIcon name="i-lucide-arrow-right" class="size-4 text-muted shrink-0" />
+                </template>
+                <!-- History shows every commit, so it has no run to pick. -->
+                <USelect v-if="state.view !== 'history'" v-model="state.run" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Run" />
+                <UTabs v-if="state.view !== 'pages'" v-model="state.env" :items="envItems" :content="false" size="xs" />
+                <UTabs v-model="state.metric" :items="metricItems" :content="false" size="xs" aria-label="Size" />
+              </template>
+              <template #right>
+                <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'issues' ? 'Search packages and files…' : state.view === 'compare' ? 'Search routes or files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
+              </template>
+            </UDashboardToolbar>
+          </div>
         </template>
 
         <template #body>
@@ -417,7 +459,6 @@ const metricItems: TabsItem[] = [
             :chunks="chunks"
             :metric="state.metric"
             :search="state.search"
-            :focus="focusedRoute"
             @inspect="inspect"
             @open-chunk="openChunk"
           />
@@ -461,7 +502,6 @@ const metricItems: TabsItem[] = [
               :metric="state.metric"
               :search="state.search"
               @inspect="inspect"
-              @open-route="openRoute"
               @open-chunk="openChunk"
             />
           </template>

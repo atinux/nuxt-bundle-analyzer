@@ -48,14 +48,12 @@ function deltaClass(delta: number) {
 
 <template>
   <section>
-    <h4 class="mb-2 text-sm text-highlighted">
-      {{ title }}
-    </h4>
     <table v-if="changes.length" class="w-full text-xs">
       <thead class="text-muted">
         <tr>
-          <th class="pb-1 text-left font-normal">
-            <span class="sr-only">Name</span>
+          <!-- The title names the first column, so it sits on the columns' line instead of above them. -->
+          <th class="pb-1 text-left text-sm text-highlighted">
+            {{ title }}
           </th>
           <th class="pb-1 ps-3 text-right font-normal max-sm:hidden">
             {{ baseName }}
@@ -98,8 +96,14 @@ function deltaClass(delta: number) {
         </tr>
       </tbody>
     </table>
-    <p v-else class="text-sm text-muted">
-      {{ empty }}
-    </p>
+    <!-- Without changes there is no header row to hold the title, so it keeps a line of its own. -->
+    <template v-else>
+      <h4 class="mb-2 text-sm text-highlighted">
+        {{ title }}
+      </h4>
+      <p class="text-sm text-muted">
+        {{ empty }}
+      </p>
+    </template>
   </section>
 </template>

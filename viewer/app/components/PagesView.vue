@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import type { ChunkInfo, Metric, PageInfo, Target } from '~/utils/data'
-import { chunkKindLabels, formatBytes } from '~/utils/data'
+import { chunkKindLabels, formatBytes, pagesDir } from '~/utils/data'
 
 const props = defineProps<{
   pages: PageInfo[]
   chunks: ChunkInfo[]
   metric: Metric
   search: string
-  /** A route whose page to show expanded, such as one picked in Compare. */
-  focus?: string
 }>()
 
 const emit = defineEmits<{
@@ -22,15 +20,6 @@ function toggle(file: string) {
     ? expanded.value.delete(file)
     : expanded.value.add(file)
 }
-watch(() => props.focus, async (route) => {
-  const page = route && props.pages.find(page => page.route === route)
-  if (!page) {
-    return
-  }
-  expanded.value.add(page.file)
-  await nextTick()
-  document.getElementById(`page-${page.file}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-}, { immediate: true })
 
 const shown = computed(() => {
   const query = props.search.trim().toLowerCase()
@@ -46,11 +35,6 @@ const shown = computed(() => {
 const everyPage = computed(() => props.chunks.filter(chunk => chunk.loadedBy === 'all'))
 const everyPageSize = computed(() => everyPage.value.reduce((sum, chunk) => sum + chunk[props.metric] + chunk.css[props.metric], 0))
 const largest = computed(() => Math.max(1, ...props.pages.map(page => page.initial?.[props.metric] ?? 0)))
-
-/** The pages directory a page is in, such as `app/pages/`. */
-function pagesDir(file: string) {
-  return file.match(/^(?:.*?\/)?pages\//)?.[0] ?? ''
-}
 
 function chunkName(chunk: ChunkInfo) {
   return chunk.file.split('/').pop()
@@ -90,7 +74,7 @@ function chunkName(chunk: ChunkInfo) {
       <span class="w-32 shrink-0 text-right sm:w-48">Initial Load</span>
     </div>
     <ul class="divide-y divide-default">
-      <li v-for="page in shown" :id="`page-${page.file}`" :key="page.file" class="scroll-mt-4">
+      <li v-for="page in shown" :key="page.file">
         <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(page.file)" @click="toggle(page.file)">
           <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(page.file) }" />
           <div class="min-w-0 flex-1">

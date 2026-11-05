@@ -525,6 +525,11 @@ export function packageOf(id: string): string | undefined {
   return PACKAGE_RE.exec(id)?.[1]
 }
 
+/** The pages directory a file is in, such as `app/pages/`, which narrow screens leave out. */
+export function pagesDir(file: string) {
+  return file.match(/^(?:.*?\/)?pages\//)?.[0] ?? ''
+}
+
 /** Groups a source as one of the project's components or files, a dependency, or code Nuxt generates. */
 export function sourceKind(part: Pick<Part, 'id' | 'package'>): SourceKind {
   if (part.package) {
@@ -605,9 +610,11 @@ export function clientChunks(data: RunData): ChunkInfo[] {
       file: chunk.file,
       kind: chunkKind(chunk),
       // Nuxt's own chunks, such as its entry, are named after their package rather than its location.
+      // A source is named the way Sonda names it, so a page outside the project root, such as one
+      // from a layer above it, still matches the file the details panel looks for.
       src: chunk.src?.includes('node_modules/')
         ? normalizeId(chunk.src).slice('node_modules/'.length)
-        : chunk.src,
+        : chunk.src && normalizeId(chunk.src),
       uncompressed: chunk.size,
       gzip: chunk.gzip,
       brotli: chunk.brotli,
