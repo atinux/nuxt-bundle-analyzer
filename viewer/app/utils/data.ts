@@ -525,6 +525,11 @@ export function packageOf(id: string): string | undefined {
   return PACKAGE_RE.exec(id)?.[1]
 }
 
+/** The pages directory a file is in, such as `app/pages/`, which narrow screens leave out. */
+export function pagesDir(file: string) {
+  return file.match(/^(?:.*?\/)?pages\//)?.[0] ?? ''
+}
+
 /** Groups a source as one of the project's components or files, a dependency, or code Nuxt generates. */
 export function sourceKind(part: Pick<Part, 'id' | 'package'>): SourceKind {
   if (part.package) {

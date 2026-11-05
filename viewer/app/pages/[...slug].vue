@@ -241,13 +241,6 @@ async function openChunk(file: string) {
   await nextTick()
   focusedChunk.value = file
 }
-const focusedRoute = ref<string>()
-async function openRoute(path: string) {
-  state.view = 'pages'
-  focusedRoute.value = undefined
-  await nextTick()
-  focusedRoute.value = path
-}
 
 const inspected = computed<Target | undefined>(() => state.package
   ? { kind: 'package', id: state.package }
@@ -384,7 +377,7 @@ const metricItems: TabsItem[] = [
                 <UTabs v-model="state.metric" :items="metricItems" :content="false" size="xs" aria-label="Size" />
               </template>
               <template #right>
-                <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'issues' ? 'Search packages and files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
+                <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'issues' ? 'Search packages and files…' : state.view === 'compare' ? 'Search routes or files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
               </template>
             </UDashboardToolbar>
           </div>
@@ -449,7 +442,6 @@ const metricItems: TabsItem[] = [
             :chunks="chunks"
             :metric="state.metric"
             :search="state.search"
-            :focus="focusedRoute"
             @inspect="inspect"
             @open-chunk="openChunk"
           />
@@ -493,7 +485,6 @@ const metricItems: TabsItem[] = [
               :metric="state.metric"
               :search="state.search"
               @inspect="inspect"
-              @open-route="openRoute"
               @open-chunk="openChunk"
             />
           </template>
