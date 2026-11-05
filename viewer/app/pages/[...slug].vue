@@ -24,11 +24,16 @@ const DEFAULT_VIEW = VIEWS[0]!
 
 const route = useRoute()
 
+/** The view a query names, which is the default one when it names none. */
+function viewOf(params: URLSearchParams) {
+  return VIEWS.find(view => view === params.get('view')) ?? DEFAULT_VIEW
+}
+
 /** The viewer's state for the current URL, so navigating re-reads it client-side. */
 function stateFromQuery() {
   const params = new URLSearchParams(location.search)
   return {
-    view: VIEWS.find(view => view === params.get('view')) ?? DEFAULT_VIEW,
+    view: viewOf(params),
     run: params.get('run') ?? '',
     base: params.get('base') ?? '',
     env: (params.get('env') === 'nitro'
@@ -72,9 +77,19 @@ watch(state, () => {
   }
   // Keep vue-router's own history state, so its back and forward navigation keeps working,
   // and leave the path alone when every parameter is at its default.
-  history.replaceState(history.state, '', query.size
+  const url = query.size
     ? `?${query}`
-    : location.pathname)
+    : location.pathname
+  // A view picked in the app gets an entry of its own, so the browser's back returns to the view it
+  // came from. Everything else stays in the entry it is already in, so typing in the search field,
+  // a metric or a picked run is not a navigation. Back and forward restore a view by re-reading the
+  // URL, which already names it, so they only ever replace.
+  if (state.view === viewOf(new URLSearchParams(location.search))) {
+    history.replaceState(history.state, '', url)
+  }
+  else {
+    history.pushState(history.state, '', url)
+  }
 }, { deep: true })
 
 function load(slug: string) {
@@ -116,12 +131,21 @@ if (!loaded.value) {
   fetchAllRuns()
 }
 
-// The path decides which pull request the hosted viewer shows and the query holds the whole UI
-// state, so a NuxtLink's navigation to the home page re-reads both, without reloading the app.
-watch(() => route.fullPath, () => {
+/** Re-reads the state from the URL, which holds all of it. */
+function readState() {
   Object.assign(state, stateFromQuery())
   pickRuns()
-})
+}
+
+// The path decides which pull request the hosted viewer shows and the query holds the whole UI
+// state, so a NuxtLink's navigation to the home page re-reads both, without reloading the app.
+watch(() => route.fullPath, readState)
+
+// Back and forward change the URL without the router reporting it: the entries the app writes are
+// not the router's own, so it can find the URL it restores to be the one it already shows and skip
+// the navigation that would tell the page about it.
+window.addEventListener('popstate', readState)
+onBeforeUnmount(() => window.removeEventListener('popstate', readState))
 
 /** Nothing to view: the hosted viewer's home page, or `serve` before any analysis. */
 const empty = computed(() => loaded.value && runs.value.length === 0)
