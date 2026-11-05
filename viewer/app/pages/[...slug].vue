@@ -307,55 +307,63 @@ const metricItems: TabsItem[] = [
     <!-- On phones the page scrolls as a document rather than inside the panel, so the browser can
          collapse its toolbar and the footer clears floating bars such as Arc's. -->
     <UDashboardGroup class="max-sm:static max-sm:overflow-visible">
-      <!-- The body scrolls, so its sections keep their height instead of shrinking to fit it. -->
-      <UDashboardPanel id="main" :ui="{ body: 'tabular-nums *:shrink-0 max-sm:overflow-visible' }">
+      <!-- The body scrolls, so its sections keep their height instead of shrinking to fit it. It is
+           positioned, so an absolutely positioned element inside it, such as a row's screen-reader
+           label, stays in its scroll area: outside of it, the element grows the dashboard group's
+           scroll area instead, which `scrollIntoView` then scrolls, pushing the header out of view. -->
+      <UDashboardPanel id="main" :ui="{ body: 'relative tabular-nums *:shrink-0 max-sm:overflow-visible' }">
         <template #header>
-          <UDashboardNavbar :toggle="false">
-            <template #title>
-              <!-- Raw, so the title keeps its color instead of the link's active one on the home page. -->
-              <ULink to="/" raw aria-label="Bundle Analyzer home" class="flex shrink-0 items-center gap-1.5">
-                <img src="/favicon.svg" alt="Nuxt" class="size-6">
-                Bundle Analyzer
-              </ULink>
-              <!-- Narrow screens keep the pull request's number, so it stays clear which one this is. -->
-              <ULink v-if="pull && pullLink" :to="pullLink.to" target="_blank" :aria-label="`Pull request ${pullLink.label} on GitHub`" class="ms-1 flex items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
-                <UIcon name="i-lucide-git-pull-request" class="size-4 shrink-0" aria-hidden="true" />
-                <span class="sm:hidden">#{{ pull.pull }}</span>
-                <span class="max-sm:hidden">{{ pullLink.label }}</span>
-              </ULink>
-              <ULink v-if="branch && branchLink" :to="branchLink.to" target="_blank" :aria-label="`Branch ${branch.branch} of ${branchLink.label} on GitHub`" class="ms-1 flex min-w-0 items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
-                <UIcon name="i-lucide-git-branch" class="size-4 shrink-0" aria-hidden="true" />
-                <span class="max-sm:hidden">{{ branchLink.label }}</span>
-                <span class="truncate">{{ branch.branch }}</span>
-              </ULink>
-            </template>
-            <template #right>
-              <UTabs v-if="!empty" v-model="state.view" :items="viewItems" :content="false" size="xs" class="max-sm:hidden" />
-              <UColorModeButton />
-            </template>
-          </UDashboardNavbar>
-
-          <!-- Narrow screens give the views a row of their own, so the title keeps its room. -->
-          <div v-if="!empty" class="border-b border-default px-4 py-2 sm:hidden">
-            <UTabs v-model="state.view" :items="viewItems" :content="false" size="xs" :ui="{ list: 'w-full', trigger: 'flex-1 justify-center' }" />
-          </div>
-
-          <!-- The controls wrap on narrow screens instead of scrolling out of view. -->
-          <UDashboardToolbar v-if="!empty" :ui="{ root: 'flex-wrap gap-y-2 py-2', left: 'flex-wrap gap-y-2', right: 'max-sm:w-full' }">
-            <template #left>
-              <template v-if="state.view === 'compare'">
-                <USelect v-model="state.base" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Base run" />
-                <UIcon name="i-lucide-arrow-right" class="size-4 text-muted shrink-0" />
+          <!-- Sticky where the body scrolls under it, so a scroll of the dashboard group, which an
+               absolutely positioned element escaping the body could still cause, cannot carry the
+               header out of view. Phones scroll the document, which brings the header back itself. -->
+          <div class="sticky top-0 z-10 shrink-0 bg-default max-sm:static">
+            <UDashboardNavbar :toggle="false">
+              <template #title>
+                <!-- Raw, so the title keeps its color instead of the link's active one on the home page. -->
+                <ULink to="/" raw aria-label="Bundle Analyzer home" class="flex shrink-0 items-center gap-1.5">
+                  <img src="/favicon.svg" alt="Nuxt" class="size-6">
+                  Bundle Analyzer
+                </ULink>
+                <!-- Narrow screens keep the pull request's number, so it stays clear which one this is. -->
+                <ULink v-if="pull && pullLink" :to="pullLink.to" target="_blank" :aria-label="`Pull request ${pullLink.label} on GitHub`" class="ms-1 flex items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
+                  <UIcon name="i-lucide-git-pull-request" class="size-4 shrink-0" aria-hidden="true" />
+                  <span class="sm:hidden">#{{ pull.pull }}</span>
+                  <span class="max-sm:hidden">{{ pullLink.label }}</span>
+                </ULink>
+                <ULink v-if="branch && branchLink" :to="branchLink.to" target="_blank" :aria-label="`Branch ${branch.branch} of ${branchLink.label} on GitHub`" class="ms-1 flex min-w-0 items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
+                  <UIcon name="i-lucide-git-branch" class="size-4 shrink-0" aria-hidden="true" />
+                  <span class="max-sm:hidden">{{ branchLink.label }}</span>
+                  <span class="truncate">{{ branch.branch }}</span>
+                </ULink>
               </template>
-              <!-- History shows every commit, so it has no run to pick. -->
-              <USelect v-if="state.view !== 'history'" v-model="state.run" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Run" />
-              <UTabs v-if="state.view !== 'pages'" v-model="state.env" :items="envItems" :content="false" size="xs" />
-              <UTabs v-model="state.metric" :items="metricItems" :content="false" size="xs" aria-label="Size" />
-            </template>
-            <template #right>
-              <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'issues' ? 'Search packages and files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
-            </template>
-          </UDashboardToolbar>
+              <template #right>
+                <UTabs v-if="!empty" v-model="state.view" :items="viewItems" :content="false" size="xs" class="max-sm:hidden" />
+                <UColorModeButton />
+              </template>
+            </UDashboardNavbar>
+
+            <!-- Narrow screens give the views a row of their own, so the title keeps its room. -->
+            <div v-if="!empty" class="border-b border-default px-4 py-2 sm:hidden">
+              <UTabs v-model="state.view" :items="viewItems" :content="false" size="xs" :ui="{ list: 'w-full', trigger: 'flex-1 justify-center' }" />
+            </div>
+
+            <!-- The controls wrap on narrow screens instead of scrolling out of view. -->
+            <UDashboardToolbar v-if="!empty" :ui="{ root: 'flex-wrap gap-y-2 py-2', left: 'flex-wrap gap-y-2', right: 'max-sm:w-full' }">
+              <template #left>
+                <template v-if="state.view === 'compare'">
+                  <USelect v-model="state.base" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Base run" />
+                  <UIcon name="i-lucide-arrow-right" class="size-4 text-muted shrink-0" />
+                </template>
+                <!-- History shows every commit, so it has no run to pick. -->
+                <USelect v-if="state.view !== 'history'" v-model="state.run" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Run" />
+                <UTabs v-if="state.view !== 'pages'" v-model="state.env" :items="envItems" :content="false" size="xs" />
+                <UTabs v-model="state.metric" :items="metricItems" :content="false" size="xs" aria-label="Size" />
+              </template>
+              <template #right>
+                <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'issues' ? 'Search packages and files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
+              </template>
+            </UDashboardToolbar>
+          </div>
         </template>
 
         <template #body>
