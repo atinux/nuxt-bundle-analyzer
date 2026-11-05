@@ -610,9 +610,11 @@ export function clientChunks(data: RunData): ChunkInfo[] {
       file: chunk.file,
       kind: chunkKind(chunk),
       // Nuxt's own chunks, such as its entry, are named after their package rather than its location.
+      // A source is named the way Sonda names it, so a page outside the project root, such as one
+      // from a layer above it, still matches the file the details panel looks for.
       src: chunk.src?.includes('node_modules/')
         ? normalizeId(chunk.src).slice('node_modules/'.length)
-        : chunk.src,
+        : chunk.src && normalizeId(chunk.src),
       uncompressed: chunk.size,
       gzip: chunk.gzip,
       brotli: chunk.brotli,

@@ -23,6 +23,7 @@ const VIEWS: View[] = branch
 const DEFAULT_VIEW = VIEWS[0]!
 
 const route = useRoute()
+const router = useRouter()
 
 /** The view a query names, which is the default one when it names none. */
 function viewOf(params: URLSearchParams) {
@@ -146,6 +147,22 @@ watch(() => route.fullPath, readState)
 // the navigation that would tell the page about it.
 window.addEventListener('popstate', readState)
 onBeforeUnmount(() => window.removeEventListener('popstate', readState))
+
+/** The home page's URL, which the title links to. */
+const home = router.resolve('/').fullPath
+
+/**
+ * The title's link home. The router skips a link to the URL it already shows, and the app moves on
+ * from that URL on its own, so when the router would skip it, the app goes home itself.
+ */
+function openHome(event: MouseEvent) {
+  if (route.fullPath !== home || location.pathname + location.search === home) {
+    return
+  }
+  event.preventDefault()
+  history.pushState(history.state, '', home)
+  readState()
+}
 
 /** Nothing to view: the hosted viewer's home page, or `serve` before any analysis. */
 const empty = computed(() => loaded.value && runs.value.length === 0)
@@ -337,7 +354,7 @@ const metricItems: TabsItem[] = [
             <UDashboardNavbar :toggle="false">
               <template #title>
                 <!-- Raw, so the title keeps its color instead of the link's active one on the home page. -->
-                <ULink to="/" raw aria-label="Bundle Analyzer home" class="flex shrink-0 items-center gap-1.5">
+                <ULink to="/" raw aria-label="Bundle Analyzer home" class="flex shrink-0 items-center gap-1.5" @click="openHome">
                   <img src="/favicon.svg" alt="Nuxt" class="size-6">
                   Bundle Analyzer
                 </ULink>

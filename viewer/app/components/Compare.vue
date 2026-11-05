@@ -69,9 +69,13 @@ const pageFiles = computed(() => {
   if (props.env !== 'client') {
     return files
   }
-  for (const page of pages(props.current, chunksOf(props.current))) {
-    for (const route of page.routes) {
-      files.set(route, page.file)
+  // The base run first, so a route it has and the current run dropped still shows the page it
+  // rendered, and the panel can describe it from that run.
+  for (const data of [props.base, props.current]) {
+    for (const page of pages(data, chunksOf(data))) {
+      for (const route of page.routes) {
+        files.set(route, page.file)
+      }
     }
   }
   return files

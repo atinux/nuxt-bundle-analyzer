@@ -124,6 +124,13 @@ describe('pages', () => {
     expect(list.map(page => page.file)).toEqual(['app/pages/stats.vue'])
     expect(list[0]!.lazy.map(chunk => chunk.kind)).toEqual(['asyncData'])
   })
+
+  it('names a page above the project root the way Sonda does, so its details are found', () => {
+    const data = run('pr', [], { '_nuxt/entry.js': 300, '_nuxt/stats.js': 100 })
+    // What the collector writes when `srcDir` sits outside `rootDir`.
+    data.chunks['_nuxt/stats.js']!.src = '../app/pages/stats.vue'
+    expect(pages(data, clientChunks(data)).map(page => page.file)).toEqual(['app/pages/stats.vue'])
+  })
 })
 
 describe('normalizeId', () => {
