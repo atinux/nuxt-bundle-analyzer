@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-import { appendFileSync, existsSync } from 'node:fs'
+import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { resolveModulePath } from 'exsolve'
 import { join, resolve } from 'pathe'
 
+import { readRunData, renderComment } from './comment'
 import bundleAnalyzer from './module'
 import { defaultRunsDir, toSlug } from './runs'
 import { serve } from './serve'
@@ -17,6 +18,7 @@ Commands:
   analyze   Build the app with analysis and open the analyzer (default)
   serve     Open the analyzer on the runs already written
   upload    Send runs to a hosted viewer from GitHub Actions
+  comment   Write a pull request comment comparing two runs, in Markdown
 
 Options for analyze:
   --name <name>        Name of the run, to keep several and compare them (default: default)
@@ -29,15 +31,21 @@ Options for analyze and serve:
   --port <port>          Port of the analyzer (default: PORT or 3000)
   --allowed-host <host>  Also answer this host, such as a tunnel; a leading dot allows subdomains (repeatable)
 
-Options for upload:
+Options for upload and comment:
   --runs <dir>      Directory with one directory per run (default: node_modules/.cache/nuxt-bundle-analyzer)
-  --url <url>       Hosted viewer (default: NUXT_BUNDLE_ANALYZER_URL)
-  --pr <number>     Pull request the comparison is for
   --base <name>     Run to compare against (default: base)
   --head <name>     Run with the change (default: pr)
   --sha <sha>       Commit the head run, or with --branch the run, was built from
+
+Options for upload:
+  --url <url>       Hosted viewer (default: NUXT_BUNDLE_ANALYZER_URL)
+  --pr <number>     Pull request the comparison is for
   --branch <name>   Instead of a pull request, add the run --name to this branch's history,
                     as built from --sha (default: GITHUB_SHA)
+
+Options for comment:
+  --link <url>      Comparison on the hosted viewer, the url upload prints, to lead the comment
+  --output <file>   Write the comment to this file instead of printing it
 `
 
 const { values, positionals } = parseArgs({
@@ -59,11 +67,18 @@ const { values, positionals } = parseArgs({
     'url': { type: 'string' },
     'sha': { type: 'string' },
     'branch': { type: 'string' },
+    'link': { type: 'string' },
+    'output': { type: 'string' },
     'help': { type: 'boolean', short: 'h' },
   },
 })
 
-const COMMANDS = ['analyze', 'serve', 'upload']
+const COMMANDS = [
+  'analyze',
+  'serve',
+  'upload',
+  'comment',
+]
 const command = COMMANDS.includes(positionals[0] ?? '')
   ? positionals.shift()!
   : 'analyze'
@@ -193,6 +208,20 @@ async function main() {
     // In GitHub Actions, later steps read the link as `steps.<id>.outputs.url`.
     if (process.env.GITHUB_OUTPUT) {
       appendFileSync(process.env.GITHUB_OUTPUT, `url=${link}\n`)
+    }
+    return
+  }
+  if (command === 'comment') {
+    const [base, head] = await Promise.all([
+      readRunData(join(runsDir, toSlug(values.base))),
+      readRunData(join(runsDir, toSlug(values.head))),
+    ])
+    const markdown = renderComment(base, head, { link: values.link, sha: values.sha })
+    if (values.output) {
+      writeFileSync(values.output, markdown)
+    }
+    else {
+      process.stdout.write(markdown)
     }
     return
   }

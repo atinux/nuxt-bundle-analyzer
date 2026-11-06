@@ -85,38 +85,69 @@ Runs are kept in `node_modules/.cache/nuxt-bundle-analyzer`.
 
 ## Comparisons on pull requests
 
-A hosted viewer can show the comparison of a pull request, so a bot comment can link to it. GitHub Actions uploads the two runs with its OpenID Connect token: the viewer checks which repository and workflow the token comes from, so the repository needs no secret.
+Two GitHub Actions analyze a pull request against its base and comment with what changed: the client and server totals, the routes whose initial load changed, and the packages and files that grew or shrank most. The comment links to the comparison on a hosted viewer, which GitHub Actions uploads both builds to with its OpenID Connect token, so the repository needs no secret.
 
-Pull requests from forks can't get that token, so the upload runs in a workflow triggered by `workflow_run`, which runs from the default branch:
+Pull requests from forks can't get that token or comment, so the work is split in two workflows:
 
-1. The `pull_request` workflow analyzes both builds and uploads them as an artifact:
+1. `.github/workflows/bundle-size.yml` builds the pull request's code, with no permissions:
 
    ```yaml
-   - run: npx nuxt-bundle-analyzer --name=pr --no-serve
-   - uses: actions/upload-artifact@v7
-     with:
-       name: bundle-pr
-       path: node_modules/.cache/nuxt-bundle-analyzer/pr
+   name: bundle-size
+   on:
+     pull_request:
+       branches: [main]
+   permissions:
+     contents: read
+   jobs:
+     analyze:
+       strategy:
+         matrix:
+           run: [base, pr]
+       runs-on: ubuntu-latest
+       steps:
+         - uses: atinux/nuxt-bundle-analyzer/actions/analyze@main
+           with:
+             name: ${{ matrix.run }}
+             # The base commit for `base`, the pull request merged into it for `pr`.
+             ref: ${{ matrix.run == 'base' && github.event.pull_request.base.sha || '' }}
    ```
 
-   Do the same for the base commit with `--name=base`.
-
-2. The `workflow_run` workflow downloads both into `runs/base` and `runs/pr`, then uploads them:
+2. `.github/workflows/bundle-size-comment.yml` runs from the default branch once it finishes, uploads both runs and comments:
 
    ```yaml
+   name: bundle-size-comment
+   on:
+     workflow_run:
+       workflows: [bundle-size]
+       types: [completed]
    permissions:
      actions: read
      id-token: write
      issues: write
-
-   steps:
-     - id: bundle
-       run: npx nuxt-bundle-analyzer upload --runs runs --pr "$PR_NUMBER" --url https://bundle.nuxt.dev
+     pull-requests: read
+   jobs:
+     comment:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: atinux/nuxt-bundle-analyzer/actions/report@main
    ```
 
-   The step's `url` output links to the comparison, such as `https://bundle.nuxt.dev/nuxt/nuxt.com/pull/1234?view=compare&base=base&run=pr`. Add it to the comment.
+Replace `main` with a release tag or its commit SHA to pin the actions: each runs the package of its own release. Each push updates the same comment, and each upload replaces the previous one for that pull request. The viewer must allow the comment workflow to upload, see [Hosting the viewer](#hosting-the-viewer).
 
-Each upload replaces the previous one for that pull request.
+The analyze action checks out the commit, installs the dependencies with the package manager of the lockfile, and runs `nuxt-bundle-analyzer`. Its inputs:
+
+| Input | Description |
+| --- | --- |
+| `name` | Name of the run and of its artifact, `bundle-analyzer-<name>`. Required. |
+| `ref` | Commit to analyze. Defaults to the commit of the event. |
+| `working-directory` | Directory of the Nuxt app, in a monorepo. |
+| `install-command` | Command that installs the dependencies, instead of the one for the lockfile. |
+| `args` | More options for `nuxt-bundle-analyzer`, such as `--extends ./layer`. |
+| `node-version` | Defaults to `lts/*`. |
+
+The report action takes `viewer-url` (`https://bundle.nuxt.dev` by default, or your own viewer, or empty to only comment), `base` and `head` when the runs have other names, and `github-token` to comment as a GitHub App rather than `github-actions`.
+
+To render the same comment yourself, compare two runs with `npx nuxt-bundle-analyzer comment --base before --head after`.
 
 ## History of a branch
 
@@ -158,6 +189,12 @@ Either way, set which workflows may upload, as `owner/repo/.github/workflows/<fi
 
 ```bash
 NUXT_OIDC_ALLOWED_WORKFLOWS=nuxt/nuxt.com/.github/workflows/bundle-size-comment.yml@refs/heads/main,nuxt/nuxt.com/.github/workflows/bundle-size-history.yml@refs/heads/main
+```
+
+A `*` stands for any characters but `/` and `@`, so this allows the comment workflow of every repository of `nuxt` and `nuxt-content`:
+
+```bash
+NUXT_OIDC_ALLOWED_WORKFLOWS=nuxt/*/.github/workflows/bundle-size-comment.yml@refs/heads/main,nuxt-content/*/.github/workflows/bundle-size-comment.yml@refs/heads/main
 ```
 
 Only a workflow on that ref can upload, so a pull request that edits the workflow can't. Uploads are stored under the repository named in the token, whatever the request says. The viewer checks every file before storing it, as the reports come from a build of the pull request's code.

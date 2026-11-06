@@ -42,11 +42,11 @@ function sign(claims: JWTPayload = {}, { signingKey = key, issuer = ISSUER, audi
     .sign(signingKey)
 }
 
-function verify(token: string) {
+function verify(token: string, allowedWorkflows = [WORKFLOW]) {
   return verifyGitHubToken(token, {
     issuer: ISSUER,
     audience: AUDIENCE,
-    allowedWorkflows: [WORKFLOW],
+    allowedWorkflows,
     keys,
   })
 }
@@ -60,6 +60,21 @@ describe('verifyGitHubToken', () => {
     // A pull request can edit the workflow, so its ref must not pass for the trusted one.
     const token = await sign({ job_workflow_ref: 'nuxt/nuxt.com/.github/workflows/bundle-size-comment.yml@refs/pull/12/merge' })
     await expect(verify(token)).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it('accepts any repository of an owner a pattern allows, on the allowed ref only', async () => {
+    const allowed = ['nuxt/*/.github/workflows/*@refs/heads/main']
+    const token = (repository: string, ref: string) => sign({ repository, job_workflow_ref: `${repository}/.github/workflows/bundle.yml@${ref}` })
+    await expect(verify(await token('nuxt/ui', 'refs/heads/main'), allowed)).resolves.toMatchObject({ repository: 'nuxt/ui' })
+    for (const [repository, ref] of [
+      // Another owner whose name starts the same.
+      ['nuxt-evil/ui', 'refs/heads/main'],
+      ['nuxt/ui', 'refs/heads/feature'],
+      ['nuxt/ui', 'refs/heads/main-feature'],
+      ['nuxt/ui', 'refs/pull/12/merge'],
+    ] as const) {
+      await expect(verify(await token(repository, ref), allowed)).rejects.toMatchObject({ statusCode: 403 })
+    }
   })
 
   it('rejects an allowed workflow called from another repository', async () => {

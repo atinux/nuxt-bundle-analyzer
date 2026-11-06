@@ -29,7 +29,7 @@ export interface Sizes {
 }
 
 /** The part of Sonda's JSON report used here; see https://sonda.dev/features/json-report. */
-interface SondaReport {
+export interface SondaReport {
   resources: Array<Sizes & {
     kind: 'filesystem' | 'sourcemap' | 'asset' | 'chunk'
     name: string
@@ -88,7 +88,7 @@ export interface Route {
   entries: string[]
 }
 
-interface NuxtData {
+export interface NuxtData {
   version: 1
   routes: Route[]
   chunks: Record<string, Chunk>
@@ -430,23 +430,28 @@ function runBase(run: Run) {
 
 export async function fetchRun(run: Run): Promise<RunData> {
   const base = runBase(run)
-  const envs = ['client', 'nitro'] as const
-  const [reports, nuxt] = await Promise.all([
-    Promise.all(envs.map(env => fetchJson<SondaReport>(`${base}/${env}.json`))),
+  const [client, nitro, nuxt] = await Promise.all([
+    fetchJson<SondaReport>(`${base}/client.json`),
+    fetchJson<SondaReport>(`${base}/nitro.json`),
     fetchJson<NuxtData>(`${base}/nuxt.json`),
   ])
+  return toRunData(run, { client, nitro }, nuxt)
+}
+
+/** A run from the files it was written as, which `nuxt-bundle-analyzer comment` reads from disk. */
+export function toRunData(run: Run, reports: Partial<Record<Env, SondaReport>>, nuxt: NuxtData | undefined): RunData {
   const data: RunData = {
     run,
     bundles: {},
     routes: nuxt?.routes ?? [],
     chunks: nuxt?.chunks ?? {},
   }
-  envs.forEach((env, index) => {
-    const report = reports[index]
+  for (const env of ['client', 'nitro'] as const) {
+    const report = reports[env]
     if (report) {
       data.bundles[env] = toBundle(report)
     }
-  })
+  }
   return data
 }
 
