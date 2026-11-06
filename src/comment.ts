@@ -61,12 +61,13 @@ function bytes(value: unknown) {
 }
 
 function percent(base: number, current: number) {
+  if (base === 0) {
+    return ''
+  }
   const change = (current - base) / base * 100
-  return base === 0
-    ? ''
-    : ` (${change > 0
-      ? '+'
-      : '−'}${Math.abs(change).toFixed(1)}%)`
+  return ` (${change > 0
+    ? '+'
+    : '−'}${Math.abs(change).toFixed(1)}%)`
 }
 
 /**
