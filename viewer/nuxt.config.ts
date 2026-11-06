@@ -37,7 +37,9 @@ export default defineNuxtConfig({
       /** The audience tokens must be issued for; the viewer's own origin when empty. */
       audience: '',
       /**
-       * Comma-separated workflows allowed to upload, as `owner/repo/.github/workflows/file.yml@refs/heads/main`.
+       * Comma-separated workflows allowed to upload, as `owner/repo/.github/workflows/file.yml@refs/heads/main`,
+       * where `*` stands for any characters but `/` and `@`, such as in place of the repository to allow
+       * every repository of an owner.
        * Set with `NUXT_OIDC_ALLOWED_WORKFLOWS`.
        */
       allowedWorkflows: '',

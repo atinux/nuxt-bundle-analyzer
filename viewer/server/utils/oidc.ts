@@ -20,9 +20,21 @@ export interface GitHubClaims extends JWTPayload {
 export interface VerifyOptions {
   issuer: string
   audience: string
-  /** Exact `job_workflow_ref` values allowed to upload. */
+  /**
+   * `job_workflow_ref` values allowed to upload, where `*` stands for any characters but `/` and `@`:
+   * a `*` in place of the repository allows every repository of the owner.
+   */
   allowedWorkflows: string[]
   keys: JWTVerifyGetKey
+}
+
+/**
+ * Whether a workflow matches an allowed pattern. `*` can't reach past a `/` or an `@`, so
+ * `@refs/heads/main` can't be met by another branch, nor `nuxt/*` by another owner.
+ */
+function matchesWorkflow(pattern: string, workflow: string) {
+  const source = pattern.split('*').map(part => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/@]*')
+  return new RegExp(`^${source}$`).test(workflow)
 }
 
 /**
@@ -43,7 +55,7 @@ export async function verifyGitHubToken(token: string, options: VerifyOptions): 
     throw new RequestError(401, `The token is not a valid GitHub Actions token for this viewer: ${(error as Error).message}`)
   }
   const { repository, job_workflow_ref: workflow } = payload as Partial<GitHubClaims>
-  if (typeof workflow !== 'string' || !options.allowedWorkflows.includes(workflow)) {
+  if (typeof workflow !== 'string' || !options.allowedWorkflows.some(pattern => matchesWorkflow(pattern, workflow))) {
     throw new RequestError(403, `The workflow ${workflow} is not allowed to upload. Add it to NUXT_OIDC_ALLOWED_WORKFLOWS.`)
   }
   // A workflow another repository calls runs with that repository's name, which would store
