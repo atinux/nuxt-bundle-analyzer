@@ -16,6 +16,8 @@ export interface Commit {
   message?: string
   time: number
   sizes: Partial<Record<Env, Sizes>>
+  /** The largest packages of each build, by name, when the viewer recorded them. */
+  packages?: Partial<Record<Env, Record<string, Sizes>>>
 }
 
 /** The reports `nuxt analyze` writes with Sonda, named after the bundle they describe. */

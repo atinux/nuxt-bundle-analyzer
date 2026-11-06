@@ -1,6 +1,18 @@
 import type { Commit, CommitUpload, PullUpload } from './reports'
+import { summarize } from './reports'
 
 const OPTIONS = { allowOverwrite: true, cacheControlMaxAge: 60, contentType: 'application/json' }
+const BACKFILL_PER_UPLOAD = 10
+
+/** A stored file as text, whichever form the driver returns it in. */
+async function readText(key: string) {
+  const raw = await useStorage('reports').getItemRaw(key)
+  return raw
+    ? typeof raw === 'string'
+      ? raw
+      : new TextDecoder().decode(raw as ArrayBuffer)
+    : undefined
+}
 
 function repositoryPrefix(repository: string) {
   return repository.toLowerCase().replace('/', ':')
@@ -23,14 +35,12 @@ export function branchPrefix(repository: string, branch: string) {
 
 /** Answers with a stored JSON file, or 404 when there is none. */
 export async function sendReport(event: Parameters<typeof setResponseHeaders>[0], key: string) {
-  const raw = await useStorage('reports').getItemRaw(key)
-  if (!raw) {
+  const text = await readText(key)
+  if (!text) {
     throw createError({ statusCode: 404, message: 'Not found' })
   }
   setResponseHeaders(event, { 'content-type': 'application/json', 'cache-control': 'public, max-age=60' })
-  return typeof raw === 'string'
-    ? raw
-    : new TextDecoder().decode(raw as ArrayBuffer)
+  return text
 }
 
 export async function saveUpload(repository: string, upload: PullUpload) {
@@ -78,6 +88,15 @@ export async function saveCommit(repository: string, upload: CommitUpload): Prom
   const commits = [
     ...history.values(),
   ].sort((a, b) => a.time - b.time)
+  // Commits uploaded before their packages were recorded get them from their stored reports,
+  // the newest first and a few per upload, which keeps each upload quick.
+  const older = commits.filter(commit => !commit.packages).slice(-BACKFILL_PER_UPLOAD)
+  await Promise.all(older.map(async (commit) => {
+    const reports = commitPrefix(repository, commit.sha)
+    const [client, nitro] = await Promise.all(['client', 'nitro'].map(async env => summarize(await readText(`${reports}:${env}.json`))))
+    commit.packages = { client: client?.packages, nitro: nitro?.packages }
+    await storage.setItemRaw(`${branch}:commits:${commit.sha}.json`, JSON.stringify(commit), OPTIONS)
+  }))
   await storage.setItemRaw(`${branch}:history.json`, JSON.stringify(commits), OPTIONS)
   return commits
 }

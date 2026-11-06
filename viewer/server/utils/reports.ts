@@ -1,3 +1,4 @@
+import { normalizeId, packageOf } from '../../app/utils/data'
 import { RequestError } from './oidc'
 
 /** The files of a run the viewer reads. */
@@ -34,6 +35,11 @@ export interface Commit {
   time: number
   /** The total of each build, as Compare adds it up: every output file in Sonda's report. */
   sizes: Partial<Record<'client' | 'nitro', Sizes>>
+  /**
+   * The largest packages of each build, by name. Commits uploaded before it was recorded
+   * have none until `saveCommit` reads their reports again.
+   */
+  packages?: Partial<Record<'client' | 'nitro', Record<string, Sizes>>>
 }
 
 /** Two runs compared for a pull request. */
@@ -101,26 +107,53 @@ function parseRun(name: string, files: unknown): { files: Record<string, string>
   return { files: run, meta: stored }
 }
 
-/** The total of a Sonda report's output files, or nothing when the run has no such report. */
-function totalOf(json: string | undefined): Sizes | undefined {
+/** How many packages of each build a commit keeps, which keeps the history small. */
+const PACKAGES_KEPT = 20
+
+function add(sizes: Sizes, resource: Record<string, unknown>) {
+  for (const metric of ['uncompressed', 'gzip', 'brotli'] as const) {
+    const value = resource[metric]
+    sizes[metric] += typeof value === 'number' && Number.isFinite(value)
+      ? value
+      : 0
+  }
+}
+
+/**
+ * The total of a Sonda report's output files, and its largest packages with what each adds to
+ * them, or nothing when the run has no such report.
+ */
+export function summarize(json: string | undefined): { total: Sizes, packages: Record<string, Sizes> } | undefined {
   const report = json && JSON.parse(json) as { resources?: unknown }
   if (!report) {
     return undefined
   }
   const total = { uncompressed: 0, gzip: 0, brotli: 0 }
+  const packages = new Map<string, Sizes>()
   for (const resource of Array.isArray(report.resources)
     ? report.resources
     : []) {
-    if (isObject(resource) && resource.kind === 'asset') {
-      for (const metric of ['uncompressed', 'gzip', 'brotli'] as const) {
-        const value = resource[metric]
-        total[metric] += typeof value === 'number' && Number.isFinite(value)
-          ? value
-          : 0
+    if (!isObject(resource)) {
+      continue
+    }
+    if (resource.kind === 'asset') {
+      add(total, resource)
+    }
+    else if (resource.kind === 'chunk' && typeof resource.name === 'string') {
+      // Named as the viewer names them, so each package adds up wherever it was installed.
+      const name = packageOf(normalizeId(resource.name))
+      if (name) {
+        const sizes = packages.get(name) ?? { uncompressed: 0, gzip: 0, brotli: 0 }
+        add(sizes, resource)
+        packages.set(name, sizes)
       }
     }
   }
-  return total
+  const largest = [...packages].sort((a, b) => b[1].uncompressed - a[1].uncompressed).slice(0, PACKAGES_KEPT)
+  return {
+    total,
+    packages: Object.fromEntries(largest),
+  }
 }
 
 function parseCommit(body: Record<string, unknown>): CommitUpload {
@@ -139,6 +172,8 @@ function parseCommit(body: Record<string, unknown>): CommitUpload {
   }
   // Each commit's reports are stored once, under its SHA, which names the run too.
   const { files, meta } = parseRun(sha, run)
+  const client = summarize(files['client.json'])
+  const nitro = summarize(files['nitro.json'])
   return {
     kind: 'commit',
     branch,
@@ -147,8 +182,12 @@ function parseCommit(body: Record<string, unknown>): CommitUpload {
       message: message?.split('\n')[0]!.slice(0, 200) || undefined,
       time: time ?? meta.endTime,
       sizes: {
-        client: totalOf(files['client.json']),
-        nitro: totalOf(files['nitro.json']),
+        client: client?.total,
+        nitro: nitro?.total,
+      },
+      packages: {
+        client: client?.packages,
+        nitro: nitro?.packages,
       },
     },
     files,

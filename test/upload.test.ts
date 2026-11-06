@@ -227,6 +227,31 @@ function commitUpload(extra: Record<string, unknown> = {}) {
             gzip: 999,
             brotli: 999,
           },
+          // Two copies of one package add up under its name, wherever each was installed.
+          {
+            kind: 'chunk',
+            name: '../node_modules/.pnpm/vue@3.5.44/node_modules/vue/dist/vue.mjs',
+            parent: '_nuxt/entry.js',
+            uncompressed: 40,
+            gzip: 12,
+            brotli: 10,
+          },
+          {
+            kind: 'chunk',
+            name: 'node_modules/nuxt/node_modules/vue/index.mjs',
+            parent: '_nuxt/entry.js',
+            uncompressed: 2,
+            gzip: 1,
+            brotli: 1,
+          },
+          {
+            kind: 'chunk',
+            name: '../node_modules/.pnpm/@vue+shared@3.5.44/node_modules/@vue/shared/dist/shared.mjs',
+            parent: '_nuxt/entry.js',
+            uncompressed: 7,
+            gzip: 3,
+            brotli: 2,
+          },
         ],
       }),
     },
@@ -235,7 +260,7 @@ function commitUpload(extra: Record<string, unknown> = {}) {
 }
 
 describe('parseUpload of a commit', () => {
-  it('sums the output files of each build, and leaves out a build the run has no report of', () => {
+  it('sums the output files and the packages of each build, and leaves out a build the run has no report of', () => {
     const parsed = parseUpload(commitUpload({ message: 'feat: charts (#12)\n\nA longer body', time: 1_700_000_000_000 })) as CommitUpload
     expect(parsed.commit).toEqual({
       sha: SHA,
@@ -243,6 +268,13 @@ describe('parseUpload of a commit', () => {
       time: 1_700_000_000_000,
       sizes: {
         client: { uncompressed: 150, gzip: 40, brotli: 25 },
+        nitro: undefined,
+      },
+      packages: {
+        client: {
+          'vue': { uncompressed: 42, gzip: 13, brotli: 11 },
+          '@vue/shared': { uncompressed: 7, gzip: 3, brotli: 2 },
+        },
         nitro: undefined,
       },
     })
