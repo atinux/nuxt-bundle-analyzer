@@ -217,6 +217,8 @@ function date(run: Run) {
         class="shrink-0"
       />
     </template>
+    <!-- Above the header, which stays sticky over the body at `z-10`: the tooltip is rendered inside
+         the chart, so lifting the chart is what shows the tooltip over the header. -->
     <UChart
       :key="byPackage ? 'packages' : 'total'"
       :type="byPackage ? 'bar' : 'line'"
@@ -225,6 +227,7 @@ function date(run: Run) {
       index="commit"
       :categories="categories"
       :format="formatBytes"
+      :ui="{ root: 'z-20' }"
       :x-axis="false"
       :points="!byPackage && sized.length <= 60"
       :height="byPackage ? 320 : 240"
