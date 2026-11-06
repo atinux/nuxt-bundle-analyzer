@@ -56,7 +56,69 @@ const sized = computed(() => points.value.filter(point => point.size !== undefin
 const first = computed(() => sized.value[0])
 const last = computed(() => sized.value.at(-1))
 
-const chartData = computed(() => sized.value.map(point => ({ commit: point.short, size: point.size! })))
+/** How many packages the chart shows apart; the rest of the build is Other. */
+const PACKAGES_SHOWN = 12
+/** Tailwind's 500 shades, spelled out: Tailwind only defines the color variables a class uses. */
+const PACKAGE_COLORS = [
+  // red, orange, amber, yellow, lime, emerald, teal, cyan, blue, indigo, violet, pink
+  'oklch(63.7% 0.237 25.331)',
+  'oklch(70.5% 0.213 47.604)',
+  'oklch(76.9% 0.188 70.08)',
+  'oklch(79.5% 0.184 86.047)',
+  'oklch(76.8% 0.233 130.85)',
+  'oklch(69.6% 0.17 162.48)',
+  'oklch(70.4% 0.14 182.503)',
+  'oklch(71.5% 0.143 215.221)',
+  'oklch(62.3% 0.214 259.815)',
+  'oklch(58.5% 0.233 277.117)',
+  'oklch(60.6% 0.25 292.717)',
+  'oklch(65.6% 0.241 354.308)',
+]
+
+const hasPackages = computed(() => sized.value.some(point => point.run.commit?.packages?.[props.env]))
+const breakdown = ref<'total' | 'packages'>('packages')
+const byPackage = computed(() => hasPackages.value && breakdown.value === 'packages')
+
+/** The packages that were the largest after any commit, the smallest first so the largest stacks on top. */
+const shownPackages = computed(() => {
+  const largest = new Map<string, number>()
+  for (const point of sized.value) {
+    for (const [name, sizes] of Object.entries(point.run.commit?.packages?.[props.env] ?? {})) {
+      largest.set(name, Math.max(largest.get(name) ?? 0, sizes[props.metric]))
+    }
+  }
+  return [...largest].sort((a, b) => b[1] - a[1]).slice(0, PACKAGES_SHOWN).map(([name]) => name).reverse()
+})
+
+const categories = computed(() => byPackage.value
+  ? [
+      { key: 'other', label: 'Other', color: 'var(--ui-bg-accented)' },
+      ...shownPackages.value.map((name, index) => ({
+        key: `package${index}`,
+        label: name,
+        color: PACKAGE_COLORS[PACKAGE_COLORS.length - shownPackages.value.length + index],
+      })),
+    ]
+  : [
+      { key: 'size', label: envLabel.value },
+    ])
+
+const chartData = computed(() => sized.value.map((point) => {
+  if (!byPackage.value) {
+    return { commit: point.short, size: point.size! }
+  }
+  const packages = point.run.commit?.packages?.[props.env] ?? {}
+  const row: Record<string, string | number> = { commit: point.short }
+  // Other is what the shown packages leave of the total, so each bar still adds up to it.
+  let other = point.size!
+  shownPackages.value.forEach((name, index) => {
+    const size = packages[name]?.[props.metric] ?? 0
+    row[`package${index}`] = size
+    other -= size
+  })
+  row.other = Math.max(other, 0)
+  return row
+}))
 const byShort = computed(() => new Map(points.value.map(point => [point.short, point])))
 /** The commit under the pointer or the keyboard focus, which the tooltip describes. */
 const focused = shallowRef<Point>()
@@ -136,29 +198,42 @@ function date(run: Run) {
     </div>
   </div>
 
-  <UCard v-if="sized.length > 1" :ui="{ header: 'py-3 sm:px-4', body: 'sm:px-4' }">
+  <UCard v-if="sized.length > 1" :ui="{ header: 'py-3 sm:px-4 flex items-start justify-between gap-2', body: 'sm:px-4' }">
     <template #header>
-      <h3 class="text-base text-highlighted">
-        {{ envLabel }} Bundle per Commit
-      </h3>
-      <p class="text-sm text-muted">
-        Every output file of the build, after each commit. Click a commit to see what it changed.
-      </p>
+      <div>
+        <h3 class="text-base text-highlighted">
+          {{ envLabel }} Bundle per Commit
+        </h3>
+        <p class="text-sm text-muted">
+          {{ byPackage ? `Every output file of the build after each commit, with its ${shownPackages.length} largest packages.` : 'Every output file of the build, after each commit.' }} Click a commit to see what it changed.
+        </p>
+      </div>
+      <UTabs
+        v-if="hasPackages"
+        v-model="breakdown"
+        :items="[{ label: 'By Package', value: 'packages' }, { label: 'Total', value: 'total' }]"
+        :content="false"
+        size="xs"
+        class="shrink-0"
+      />
     </template>
     <UChart
+      :key="byPackage ? 'packages' : 'total'"
+      :type="byPackage ? 'bar' : 'line'"
+      :stacked="byPackage"
       :data="chartData"
       index="commit"
-      :categories="[{ key: 'size', label: envLabel }]"
+      :categories="categories"
       :format="formatBytes"
       :x-axis="false"
-      :points="sized.length <= 60"
-      :height="240"
-      :aria-label="`${envLabel} bundle size per commit`"
+      :points="!byPackage && sized.length <= 60"
+      :height="byPackage ? 320 : 240"
+      :aria-label="byPackage ? `${envLabel} bundle size per commit, by package` : `${envLabel} bundle size per commit`"
       class="cursor-pointer"
       @focus-change="onFocus"
       @select="onSelect"
     >
-      <template #tooltip>
+      <template #tooltip="{ rows: tooltipRows }">
         <div v-if="focused" class="max-w-72 space-y-0.5 text-xs">
           <p class="text-muted">
             <span class="font-mono">{{ focused.short }}</span> · {{ date(focused.run) }}
@@ -172,6 +247,17 @@ function date(run: Run) {
               {{ formatDelta(focused.delta) }}
             </span>
           </p>
+          <template v-if="byPackage">
+            <!-- The top of the stack first, as the bar reads. -->
+            <div v-for="row in [...tooltipRows].reverse()" :key="row.label" class="flex items-center gap-1.5" :class="row.active ? 'text-highlighted' : 'text-muted'">
+              <span class="size-2 shrink-0 rounded-full" :style="{ backgroundColor: row.color }" />
+              <span class="min-w-0 flex-1 truncate">{{ row.label }}</span>
+              <span class="tabular-nums">{{ row.value }}</span>
+            </div>
+            <p v-if="!focused.run.commit?.packages?.[env]" class="text-muted">
+              Its packages are not recorded yet.
+            </p>
+          </template>
         </div>
       </template>
     </UChart>

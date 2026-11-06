@@ -120,7 +120,7 @@ Each upload replaces the previous one for that pull request.
 
 ## History of a branch
 
-The hosted viewer can also keep a run for each commit pushed to a branch, and show how the bundle changed over them at `/<owner>/<repo>/tree/<branch>`, such as `https://bundle.nuxt.dev/nuxt/nuxt.com/tree/main`. Its **History** view plots the size after each commit and lists what each one changed; clicking a commit opens Compare with the commit before it.
+The hosted viewer can also keep a run for each commit pushed to a branch, and show how the bundle changed over them at `/<owner>/<repo>/tree/<branch>`, such as `https://bundle.nuxt.dev/nuxt/nuxt.com/tree/main`. Its **History** view plots the size after each commit, split into its largest packages, and lists what each one changed; clicking a commit opens Compare with the commit before it.
 
 ![History: the size of the client build after each commit on main, with the commit that removed 725 kB highlighted](./.github/assets/history.png)
 
