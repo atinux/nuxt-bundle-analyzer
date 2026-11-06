@@ -54,32 +54,40 @@ function routeLines(markdown: string) {
 }
 
 describe('renderComment', () => {
-  it('lists the routes that changed, the largest change first, with added and removed ones', () => {
+  it('lists the routes that changed by 100 B or more, the largest change first, with added and removed ones', () => {
     const markdown = renderComment(
       run({
-        '/': 100,
-        '/small': 100,
-        '/same': 100,
-        '/gone': 50,
+        '/': 10_000,
+        '/edge': 10_000,
+        '/noise': 10_000,
+        '/gone': 5000,
       }),
       run({
-        '/': 90,
-        '/small': 102,
-        '/same': 100,
+        '/': 9000,
+        '/edge': 10_100,
+        // Two builds of the same code differ by a few bytes.
+        '/noise': 10_099,
         '/new': 20,
       }),
     )
     expect(routeLines(markdown)).toEqual([
       '| <code>/gone</code> | n/a | removed |',
+      '| <code>/</code> | 9.00 kB | −1.00 kB (−10.0%) |',
+      '| <code>/edge</code> | 10.1 kB | +100 B (+1.0%) |',
+      // Added and removed routes are listed whatever their size.
       '| <code>/new</code> | 20 B | added |',
-      '| <code>/</code> | 90 B | −10 B (−10.0%) |',
-      '| <code>/small</code> | 102 B | +2 B (+2.0%) |',
     ])
+  })
+
+  it('says no route changed when every change is under 100 B', () => {
+    const markdown = renderComment(run({ '/': 10_000 }), run({ '/': 10_031 }))
+    expect(routeLines(markdown)).toEqual([])
+    expect(markdown).toContain('No route loads 100 B more or less before it renders.')
   })
 
   it('shows ten routes and counts the rest', () => {
     const routes = Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`/page-${index}`, 100]))
-    const grown = Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`/page-${index}`, 100 + index + 1]))
+    const grown = Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`/page-${index}`, 100 + (index + 1) * 100]))
     const markdown = renderComment(run(routes), run(grown))
     expect(routeLines(markdown)).toHaveLength(10)
     expect(routeLines(markdown)[0]).toContain('/page-11')
@@ -93,9 +101,9 @@ describe('renderComment', () => {
 
   it('keeps names from the pull request from mentioning, linking, or breaking the table', () => {
     const name = '/@octocat|[x](https://example.com)`'
-    const markdown = renderComment(run({ [name]: 1 }), run({ [name]: 2 }), { link: 'https://bundle.nuxt.dev/a) [b](https://example.com' })
+    const markdown = renderComment(run({ [name]: 100 }), run({ [name]: 300 }), { link: 'https://bundle.nuxt.dev/a) [b](https://example.com' })
     const [line] = routeLines(markdown)
-    expect(line).toBe('| <code>/&#64;octocat&#124;&#91;x&#93;(https://example.com)&#96;</code> | 2 B | +1 B (+100.0%) |')
+    expect(line).toBe('| <code>/&#64;octocat&#124;&#91;x&#93;(https://example.com)&#96;</code> | 300 B | +200 B (+200.0%) |')
     expect(markdown).not.toContain('Explore the comparison')
   })
 

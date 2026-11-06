@@ -8,6 +8,8 @@ import { formatBytes, formatDelta, routeSize, toRunData } from '../viewer/app/ut
 /** Runs come from builds of a pull request's code, so a file this large is refused rather than parsed. */
 const MAX_FILE_SIZE = 64 * 1024 * 1024
 const MAX_ROWS = 10
+/** Two builds of the same code differ by a few bytes, such as the build ID, so smaller changes are left out. */
+const MIN_CHANGE = 100
 const MAX_NAME_LENGTH = 200
 /** Where the comment starts, so a workflow can find it again to update it. */
 export const COMMENT_MARKER = '<!-- nuxt-bundle-analyzer -->'
@@ -96,7 +98,7 @@ interface Row {
   delta: number
 }
 
-/** What changed, the largest changes first, leaving out what did not. */
+/** What changed, the largest changes first, leaving out what changed by less than {@link MIN_CHANGE}. */
 function changes(base: Map<string, number>, current: Map<string, number>): Row[] {
   return [
     ...new Set([
@@ -110,7 +112,7 @@ function changes(base: Map<string, number>, current: Map<string, number>): Row[]
       current: current.get(key),
       delta: (current.get(key) ?? 0) - (base.get(key) ?? 0),
     }))
-    .filter(row => row.delta !== 0 || row.base === undefined || row.current === undefined)
+    .filter(row => Math.abs(row.delta) >= MIN_CHANGE || row.base === undefined || row.current === undefined)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.key.localeCompare(b.key))
 }
 
@@ -207,7 +209,7 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
     )
   }
   else if (current.routes.length > 0) {
-    lines.push('', 'No route loads more or less before it renders.')
+    lines.push('', `No route loads ${formatBytes(MIN_CHANGE)} more or less before it renders.`)
   }
 
   const client = changes(sourceSizes(base, 'client'), sourceSizes(current, 'client'))
@@ -220,7 +222,7 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
   }
 
   const notes = [
-    'Brotli sizes.',
+    `Brotli sizes. Changes under ${formatBytes(MIN_CHANGE)} are left out of the tables.`,
     ...routes.length > 0
       ? ['Initial page load counts the JavaScript and CSS a route loads before it renders.']
       : [],
