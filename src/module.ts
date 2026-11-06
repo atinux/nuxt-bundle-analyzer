@@ -51,6 +51,19 @@ export function resolveSource(path: string, sourceRoot: string): string {
     : source) as string
 }
 
+/**
+ * Where Nuxt's client source map sources are relative to. Nuxt rewrites them relative to the
+ * directory the maps are served from, `_nuxt` in Nitro's public directory, while Sonda reads the maps
+ * from the build directory, `.nuxt/dist/client/_nuxt`, and would resolve every `../` from there. A
+ * layer above `rootDir` would then be named inside the build directory.
+ */
+export function clientSourceRoot(sourceRoot: string, dirs: { buildDir: string, publicDir: string }): string {
+  const fromClientDir = relative(join(dirs.buildDir, 'dist/client'), sourceRoot)
+  return fromClientDir.startsWith('..')
+    ? sourceRoot
+    : join(dirs.publicDir, fromClientDir)
+}
+
 export default defineNuxtModule<ModuleOptions>({
   meta: {
     name: 'nuxt-bundle-analyzer',
@@ -95,14 +108,19 @@ export default defineNuxtModule<ModuleOptions>({
       rollupOptions.output = { ...rollupOptions.output, chunkFileNames: '_nuxt/[name].js', entryFileNames: '_nuxt/[name].js' }
     }
 
-    const sondaOptions = (filename: string) => ({
+    const sondaOptions = (filename: string, sourcesPathNormalizer = resolveSource) => ({
       outputDir: runDir,
       filename,
       format: ['json' as const],
       open: false as const,
       gzip: true,
       brotli: true,
-      sourcesPathNormalizer: resolveSource,
+      sourcesPathNormalizer,
+    })
+
+    let publicDir = join(nuxt.options.rootDir, '.output/public')
+    nuxt.hook('nitro:init', (nitro) => {
+      publicDir = nitro.options.output.publicDir
     })
 
     nuxt.hook('vite:extendConfig', (config, { isClient }) => {
@@ -111,7 +129,8 @@ export default defineNuxtModule<ModuleOptions>({
       }
       // With Nuxt 5, the client and server environments share this list of plugins, so it is
       // extended in place and the plugin limits itself to the client environment.
-      const plugin = SondaVitePlugin(sondaOptions('client'))
+      const plugin = SondaVitePlugin(sondaOptions('client', (path, sourceRoot) =>
+        resolveSource(path, clientSourceRoot(sourceRoot, { buildDir: nuxt.options.buildDir, publicDir }))))
       config.plugins?.push({
         ...plugin,
         applyToEnvironment: (environment: { name: string }) => environment.name === 'client',
