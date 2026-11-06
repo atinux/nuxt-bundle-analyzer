@@ -57,6 +57,7 @@ interface Plot {
 
 const container = useTemplateRef<HTMLDivElement>('container')
 const unsupported = ref(false)
+/** The pointer in the viewport and what it is over, which the tooltip is placed against. */
 const hovered = ref<{ x: number, y: number, title: string, lines: string[] }>()
 
 /** How many routes load a chunk before rendering, as a share of them; Nitro's chunks get one height. */
@@ -400,10 +401,10 @@ function pick(event: PointerEvent) {
     return undefined
   }
   return hit.object === buildingMesh
-    ? { building: city.value.buildings[hit.instanceId]!, index: hit.instanceId, bounds }
+    ? { building: city.value.buildings[hit.instanceId]!, index: hit.instanceId }
     : hit.object === ghostMesh
-      ? { building: city.value.ghosts[hit.instanceId]!, bounds }
-      : { plot: city.value.plots[hit.instanceId]!, bounds }
+      ? { building: city.value.ghosts[hit.instanceId]! }
+      : { plot: city.value.plots[hit.instanceId]! }
 }
 
 function onPointerMove(event: PointerEvent) {
@@ -424,13 +425,11 @@ function onPointerMove(event: PointerEvent) {
     hovered.value = undefined
     return
   }
-  const x = event.clientX - hit.bounds.left
-  const y = event.clientY - hit.bounds.top
   if ('building' in hit && hit.building) {
     const { building } = hit
     hovered.value = {
-      x,
-      y,
+      x: event.clientX,
+      y: event.clientY,
       title: building.id.startsWith('node_modules/')
         ? building.id.slice('node_modules/'.length)
         : building.id,
@@ -444,8 +443,8 @@ function onPointerMove(event: PointerEvent) {
   }
   else if ('plot' in hit && hit.plot) {
     hovered.value = {
-      x,
-      y,
+      x: event.clientX,
+      y: event.clientY,
       title: hit.plot.chunk.file.split('/').pop()!,
       lines: [
         hit.plot.before === undefined
@@ -593,9 +592,12 @@ onBeforeUnmount(() => {
       description="This browser could not start WebGL. The same chunks are listed in By Chunk."
       class="absolute inset-0"
     />
+    <!-- Placed against the viewport rather than inside the container, which clips what it holds and
+         would cut the tooltip near its edges. Fixed also clears the body's clip and the header, which
+         stays sticky over the body at `z-10`. -->
     <div
       v-if="hovered"
-      class="pointer-events-none absolute z-10 max-w-80 rounded-md bg-default px-2.5 py-1.5 text-xs shadow-lg ring ring-default"
+      class="pointer-events-none fixed z-20 max-w-80 rounded-md bg-default px-2.5 py-1.5 text-xs shadow-lg ring ring-default"
       :style="{ left: `${hovered.x + 14}px`, top: `${hovered.y + 14}px` }"
     >
       <p class="break-all font-mono text-highlighted">
