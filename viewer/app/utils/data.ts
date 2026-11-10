@@ -558,7 +558,8 @@ const LAYOUTS_RE = /(?:^|\/)layouts\//
  */
 const ASYNC_DATA_CHUNK_RE = /(?:^|\/)async-data-chunk-\d+\.js$/
 
-function chunkKind(chunk: Chunk): ChunkKind {
+/** `routeEntries` are the chunks routes start from: the app entry, layouts, and pages wherever they live. */
+function chunkKind(chunk: Chunk, routeEntries: Set<string>): ChunkKind {
   if (chunk.isEntry) {
     return 'entry'
   }
@@ -567,6 +568,10 @@ function chunkKind(chunk: Chunk): ChunkKind {
   }
   if (ASYNC_DATA_CHUNK_RE.test(chunk.src)) {
     return 'asyncData'
+  }
+  // A page added with `extendPages`, such as Docus's `templates/landing.vue`, is outside `pages/`.
+  if (routeEntries.has(chunk.file) && !LAYOUTS_RE.test(chunk.src)) {
+    return 'page'
   }
   if (chunk.src.includes('node_modules/')) {
     return 'nuxt'
@@ -584,6 +589,7 @@ export function clientChunks(data: RunData): ChunkInfo[] {
     path: route.path,
     files: new Set(routeFiles(data, route).map(chunk => chunk.file)),
   }))
+  const routeEntries = new Set(data.routes.flatMap(route => route.entries))
   const parts = data.bundles.client?.parts ?? []
   const chunks: ChunkInfo[] = []
   for (const chunk of Object.values(data.chunks)) {
@@ -615,7 +621,7 @@ export function clientChunks(data: RunData): ChunkInfo[] {
     const routes = loaded.filter(route => route.files.has(chunk.file)).map(route => route.path)
     chunks.push({
       file: chunk.file,
-      kind: chunkKind(chunk),
+      kind: chunkKind(chunk, routeEntries),
       // Nuxt's own chunks, such as its entry, are named after their package rather than its location.
       // A source is named the way Sonda names it, so a page outside the project root, such as one
       // from a layer above it, still matches the file the details panel looks for.

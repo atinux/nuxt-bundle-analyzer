@@ -131,6 +131,42 @@ describe('pages', () => {
     data.chunks['_nuxt/stats.js']!.src = '../app/pages/stats.vue'
     expect(pages(data, clientChunks(data)).map(page => page.file)).toEqual(['app/pages/stats.vue'])
   })
+
+  it('lists the pages routes render from outside `pages/`, and keeps their layout a layout', () => {
+    const data = run('pr', [], {
+      '_nuxt/entry.js': 300,
+      '_nuxt/default.js': 50,
+      '_nuxt/landing.js': 20,
+      '_nuxt/slug.js': 30,
+    })
+    data.chunks['_nuxt/entry.js']!.isEntry = true
+    data.chunks['_nuxt/default.js']!.src = 'layer/app/layouts/default.vue'
+    // Docus adds its landing page with `extendPages`.
+    data.chunks['_nuxt/landing.js']!.src = 'layer/app/templates/landing.vue'
+    // A site extending Docus from npm renders its pages from `node_modules`.
+    data.chunks['_nuxt/slug.js']!.src = 'node_modules/docus/app/pages/[...slug].vue'
+    data.routes = [
+      {
+        path: '/',
+        entries: ['_nuxt/entry.js', '_nuxt/default.js', '_nuxt/landing.js'],
+      },
+      {
+        path: '/:slug(.*)*',
+        entries: ['_nuxt/entry.js', '_nuxt/default.js', '_nuxt/slug.js'],
+      },
+      // A route without a page file lists the layout last.
+      {
+        path: '/sitemap.xml',
+        entries: ['_nuxt/entry.js', '_nuxt/default.js'],
+      },
+    ]
+    const chunks = clientChunks(data)
+    expect(pages(data, chunks).map(page => [page.file, page.route])).toEqual([
+      ['docus/app/pages/[...slug].vue', '/:slug(.*)*'],
+      ['layer/app/templates/landing.vue', '/'],
+    ])
+    expect(chunks.find(chunk => chunk.file === '_nuxt/default.js')!.kind).toBe('layout')
+  })
 })
 
 describe('normalizeId', () => {
