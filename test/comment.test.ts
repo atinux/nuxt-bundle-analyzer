@@ -46,11 +46,48 @@ function run(routes: Record<string, number>, total = 1000): RunData {
         css: [],
       },
     ])),
+    prerendered: [],
   }
 }
 
 function routeLines(markdown: string) {
   return markdown.split('\n').filter(line => line.startsWith('| <code>'))
+}
+
+/** Adds prerendered URLs to a run, each preloading one chunk of `initial` bytes, with `html` bytes of HTML. */
+function prerender(data: RunData, urls: Record<string, [initial: number, html: number]>): RunData {
+  for (const [url, [initial, html]] of Object.entries(urls)) {
+    const file = `_nuxt/url-${url}.js`
+    data.chunks[file] = {
+      file,
+      type: 'js',
+      size: initial,
+      gzip: initial,
+      brotli: initial,
+      imports: [],
+      dynamicImports: [],
+      css: [],
+    }
+    data.prerendered.push({
+      url,
+      size: html,
+      gzip: html,
+      brotli: html,
+      files: [file],
+    })
+  }
+  return data
+}
+
+/** The rows of the prerendered URLs' table. */
+function urlLines(markdown: string) {
+  const lines = markdown.split('\n')
+  const start = lines.indexOf('| Prerendered URL | Initial load | Δ | HTML | Δ |')
+  if (start === -1) {
+    return []
+  }
+  const end = lines.findIndex((line, index) => index > start && !line.startsWith('|'))
+  return lines.slice(start + 2, end)
 }
 
 describe('renderComment', () => {
@@ -92,6 +129,54 @@ describe('renderComment', () => {
     expect(routeLines(markdown)).toHaveLength(10)
     expect(routeLines(markdown)[0]).toContain('/page-11')
     expect(markdown).toContain('And 2 more routes.')
+  })
+
+  it('lists the prerendered URLs whose initial load or HTML changed by 100 B or more, with added and removed ones', () => {
+    const markdown = renderComment(
+      prerender(run({}), {
+        '/a': [10_000, 2000],
+        '/b': [4000, 3000],
+        '/c': [4000, 3000],
+        '/gone': [5000, 1000],
+      }),
+      prerender(run({}), {
+        '/a': [10_500, 2000],
+        // Only the HTML grew.
+        '/b': [4000, 3200],
+        '/c': [4099, 3050],
+        '/new': [300, 1000],
+      }),
+    )
+    expect(urlLines(markdown)).toEqual([
+      '| <code>/gone</code> | n/a | removed | n/a | removed |',
+      '| <code>/a</code> | 10.5 kB | +500 B (+5.0%) | 2.00 kB | ±0 B |',
+      '| <code>/new</code> | 300 B | added | 1.00 kB | added |',
+      '| <code>/b</code> | 4.00 kB | ±0 B | 3.20 kB | +200 B (+6.7%) |',
+    ])
+    expect(markdown).toContain('Prerendered URLs count the JavaScript and CSS their HTML preloads')
+  })
+
+  it('says no prerendered URL changed when every change is under 100 B, and leaves the table out without any', () => {
+    const markdown = renderComment(prerender(run({}), {
+      '/a': [1000, 1000],
+    }), prerender(run({}), {
+      '/a': [1099, 1099],
+    }))
+    expect(urlLines(markdown)).toEqual([])
+    expect(markdown).toContain('No prerendered URL preloads 100 B more or less.')
+    const without = renderComment(run({ '/': 1000 }), run({ '/': 2000 }))
+    expect(without).not.toContain('Prerendered URL')
+    expect(without).not.toContain('prerendered URL')
+  })
+
+  it('keeps prerendered URLs from mentioning, linking, or breaking the table', () => {
+    const url = '/@octocat|[x](https://example.com)`'
+    const markdown = renderComment(prerender(run({}), {
+      [url]: [100, 100],
+    }), prerender(run({}), {
+      [url]: [300, 100],
+    }))
+    expect(urlLines(markdown)).toEqual(['| <code>/&#64;octocat&#124;&#91;x&#93;(https://example.com)&#96;</code> | 300 B | +200 B (+200.0%) | 100 B | ±0 B |'])
   })
 
   it('colors the client total red when it grows and green when it shrinks', () => {

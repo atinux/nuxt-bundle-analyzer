@@ -19,6 +19,7 @@ https://github.com/user-attachments/assets/db6b95b7-0e33-4a54-9a60-69192bb6becf
 - **Why it's included:** pick any file or package to see its size, the chunks it's in, the chain of imports that leads to it, and what imports it.
 - **Duplicate packages:** packages bundled more than once, with each version, what imports it, and the size of the extra copies.
 - **Circular imports:** loops of imports, the ones through your own files first.
+- **[Prerendered URLs](#prerendered-urls):** what the HTML of each prerendered page preloads, with the lazy-loaded components the page rendered on top of its route.
 - **Compare two builds:** the difference for each route, package, and file, as tables or as a 3D city colored by what changed.
 - **[Pull request comparisons](#comparisons-on-pull-requests):** GitHub Actions uploads both builds to a hosted viewer, so a bot comment can link to the comparison. The repository needs no secret.
 - **[Branch history](#history-of-a-branch):** GitHub Actions uploads a build of each commit pushed to a branch. The hosted viewer charts the size after each commit, and you can open what any commit changed.
@@ -55,6 +56,42 @@ Compare shows the size difference for each route, package, and file.
 
 ![Compare: the total size of both builds, and the difference in the initial load of each route](./.github/assets/compare.png)
 
+## Prerendered URLs
+
+A route's initial load follows its static imports and stops at every dynamic `import()`. It doesn't count the lazy-loaded components a page renders, such as the prose components of a page rendered from Markdown, although the page's HTML preloads them. All the pages of a docs site often share one route, so they all show the same initial load.
+
+With `--prerender`, the app's own prerender config runs, and the analyzer records every HTML page Nitro prerenders: its URL, the size of its HTML, and the JavaScript and CSS the HTML preloads. For an app that prerenders every page, that takes as long as `nuxt generate`. To measure a few URLs, list them in a layer:
+
+```ts
+// bundle-prerender/nuxt.config.ts
+const urls = ['/en', '/en/getting-started/installation', '/en/essentials/components']
+
+export default defineNuxtConfig({
+  nitro: {
+    prerender: {
+      routes: urls,
+      ignore: [
+        (path: string) => !urls.includes(path)
+      ],
+    },
+  },
+})
+```
+
+Then pass it with `--extends`:
+
+```bash
+npx nuxt-bundle-analyzer --prerender --extends ./bundle-prerender
+```
+
+The `ignore` function keeps the run to those URLs, even when the app crawls links or a module adds routes. The build logs how many pages it recorded, such as `Recorded 3 prerendered pages`. When the count is off, check the layer's path: Nuxt only warns when it can't find a layer.
+
+This works for SSR apps too. An SSR response has the same HTML tags as the prerendered file, so prerendering a URL in the analysis build shows what an SSR visit preloads. Pages that depend on the request, such as on cookies, auth or live data, are measured as they render at build time.
+
+The **Prerendered** tab lists each URL with its HTML and its initial load, split into what comes from its route and what the page added: the lazy-loaded components it rendered. Each page in **Pages** lists the URLs of its routes, and **Compare** and the pull request comment show how each URL changed.
+
+The initial load of a URL counts its HTML's module scripts, `modulepreload` links and stylesheets. It leaves out what the HTML only prefetches and the payload preload.
+
 ## With `nuxi analyze`
 
 To analyze every `nuxi analyze` run instead, add the module:
@@ -73,7 +110,7 @@ Set `NUXT_BUNDLE_ANALYZER_NAME` to name these runs, or `bundleAnalyzer.name` in 
 | --- | --- |
 | `--name <name>` | Name of the run, so you can keep several and compare them. Defaults to `default`. |
 | `--no-serve` | Write the reports without opening the analyzer. |
-| `--prerender` | Prerender routes while analyzing. |
+| `--prerender` | Prerender routes while analyzing, and record what each page's HTML preloads. See [Prerendered URLs](#prerendered-urls). |
 | `--extends <layer>` | Extend the app with a layer, as with `nuxi`. |
 | `serve` | Open the analyzer on the runs you already have, without building. |
 | `PORT` | Port of the analyzer. Defaults to `3000`. |
@@ -85,7 +122,7 @@ Runs are kept in `node_modules/.cache/nuxt-bundle-analyzer`.
 
 ## Comparisons on pull requests
 
-A bot comment on each pull request can show what changed: the client and server totals, the routes whose initial load changed, and the packages and files that grew or shrank most. It links to the comparison on a hosted viewer, which GitHub Actions uploads both builds to with its OpenID Connect token, so the repository needs no secret.
+A bot comment on each pull request can show what changed: the client and server totals, the routes and prerendered URLs whose initial load changed, and the packages and files that grew or shrank most. It links to the comparison on a hosted viewer, which GitHub Actions uploads both builds to with its OpenID Connect token, so the repository needs no secret.
 
 Pull requests from forks can't get that token or comment, so the work is split in two workflows:
 

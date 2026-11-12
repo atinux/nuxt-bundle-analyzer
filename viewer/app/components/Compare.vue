@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { TabsItem } from '@nuxt/ui'
 import type { ChunkInfo, Env, Metric, RunData, Source, Target } from '~/utils/data'
-import { clientChunks, formatBytes, formatDelta, locationChanges, pages, pagesDir, routeChanges, routeSize, serverChunks } from '~/utils/data'
+import { clientChunks, formatBytes, formatDelta, locationChanges, pageChanges, pages, pagesDir, prerenderedSize, routeChanges, routeSize, serverChunks } from '~/utils/data'
 
 const props = defineProps<{
   base: RunData
@@ -111,6 +111,40 @@ const pickedTable = ref<'routes' | 'packages'>('routes')
 const table = computed(() => allRoutes.value.length
   ? pickedTable.value
   : 'packages')
+/** Every prerendered URL of both runs, with the difference of its HTML, the largest difference first. */
+const allUrls = computed(() => {
+  if (props.env !== 'client') {
+    return []
+  }
+  const sizesOf = (data: RunData) => new Map(data.prerendered.map(page => [
+    page.url,
+    {
+      initial: prerenderedSize(data, page)[props.metric],
+      html: props.metric === 'uncompressed'
+        ? page.size
+        : page[props.metric],
+    },
+  ]))
+  const before = sizesOf(props.base)
+  const after = sizesOf(props.current)
+  return [
+    ...new Set([
+      ...before.keys(),
+      ...after.keys(),
+    ]),
+  ]
+    .map(url => ({
+      ...toRow(url, before.get(url)?.initial, after.get(url)?.initial),
+      html: (after.get(url)?.html ?? 0) - (before.get(url)?.html ?? 0),
+    }))
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || Math.abs(b.html) - Math.abs(a.html))
+})
+const urls = computed(() => {
+  const query = props.search.trim().toLowerCase()
+  return query
+    ? allUrls.value.filter(row => row.key.toLowerCase().includes(query))
+    : allUrls.value
+})
 
 /** The routes the search keeps: its path, or the page file that renders it. */
 const routes = computed(() => {
@@ -177,6 +211,12 @@ const routeDetails = computed(() => Object.fromEntries([...expanded.value]
   .map(key => [
     key.slice('route:'.length),
     routeChanges(props.base, props.current, key.slice('route:'.length), props.metric),
+  ])))
+const urlDetails = computed(() => Object.fromEntries([...expanded.value]
+  .filter(key => key.startsWith('url:'))
+  .map(key => [
+    key.slice('url:'.length),
+    pageChanges(props.base, props.current, key.slice('url:'.length), props.metric),
   ])))
 
 /** When each client chunk loads, from the current run, or the base one for a chunk it no longer has. */
@@ -375,6 +415,101 @@ function percent(delta: number, base: number) {
           <tr v-if="!routes.length">
             <td colspan="4" class="px-4 py-6 text-center text-muted">
               No routes match this search.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </UCard>
+
+  <UCard v-if="show === 'tables' && table === 'routes' && allUrls.length" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+    <template #header>
+      <h3 class="text-base text-highlighted">
+        Initial Load per Prerendered URL
+      </h3>
+      <p class="text-sm text-muted">
+        JavaScript and CSS each URL's prerendered HTML preloads, and the difference of the HTML itself.
+      </p>
+    </template>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-muted">
+          <tr class="border-b border-default">
+            <th class="px-4 py-2 text-left font-medium">
+              URL
+            </th>
+            <th class="px-4 py-2 text-right font-medium max-sm:hidden">
+              {{ base.run.name }}
+            </th>
+            <th class="px-4 py-2 text-right font-medium max-sm:hidden">
+              {{ current.run.name }}
+            </th>
+            <th class="px-4 py-2 text-right font-medium">
+              Difference
+            </th>
+            <th class="px-4 py-2 text-right font-medium max-sm:hidden">
+              HTML
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <template v-for="row in urls" :key="row.key">
+            <tr class="cursor-pointer border-b border-default last:border-0" @click="toggle(`url:${row.key}`)">
+              <td class="px-4 py-2">
+                <div class="flex min-w-32 items-center gap-2">
+                  <UButton
+                    :icon="expanded.has(`url:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    :aria-expanded="expanded.has(`url:${row.key}`)"
+                    :aria-label="`Show where the difference of ${row.key} comes from`"
+                    @click.stop="toggle(`url:${row.key}`)"
+                  />
+                  <span class="min-w-0 font-mono text-xs break-all">{{ row.key }}</span>
+                </div>
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden">
+                {{ row.base === undefined ? '—' : formatBytes(row.base) }}
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden">
+                {{ row.current === undefined ? '—' : formatBytes(row.current) }}
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap">
+                <UBadge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New URL' : 'Removed'" color="neutral" variant="subtle" />
+                <span v-else :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden" :class="row.status === 'changed' || row.status === 'same' ? deltaClass(row.html) : 'text-muted'">
+                {{ row.status === 'changed' || row.status === 'same' ? formatDelta(row.html) : '—' }}
+              </td>
+            </tr>
+            <tr v-if="expanded.has(`url:${row.key}`)" class="border-b border-default bg-elevated/30 last:border-0">
+              <td colspan="5" class="px-4 py-4 sm:ps-13">
+                <div v-if="urlDetails[row.key]" class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <ChangeList
+                    title="Chunks It Loads"
+                    :changes="urlDetails[row.key]!.chunks"
+                    :base-name="base.run.name"
+                    :current-name="current.run.name"
+                    :notes="loadedBy"
+                    empty="The chunks it loads did not change."
+                  />
+                  <ChangeList
+                    title="Files and Packages in Them"
+                    :changes="urlDetails[row.key]!.sources"
+                    :base-name="base.run.name"
+                    :current-name="current.run.name"
+                    sources
+                    empty="No file or package in them changed."
+                    @inspect="target => emit('inspect', target)"
+                  />
+                </div>
+              </td>
+            </tr>
+          </template>
+          <tr v-if="!urls.length">
+            <td colspan="5" class="px-4 py-6 text-center text-muted">
+              No URLs match this search.
             </td>
           </tr>
         </tbody>

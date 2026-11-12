@@ -2,7 +2,7 @@ import type { Bundle, Part, RunData } from '../viewer/app/utils/data'
 
 import { describe, expect, it } from 'vitest'
 
-import { clientChunks, locationChanges, normalizeId, packageOf, pages, routeChanges } from '../viewer/app/utils/data'
+import { clientChunks, locationChanges, normalizeId, packageOf, pageChanges, pages, prerenderedPages, routeChanges } from '../viewer/app/utils/data'
 
 function part(asset: string, id: string, gzip: number, pkg?: string): Part {
   return {
@@ -53,6 +53,7 @@ function run(dir: string, parts: Part[], chunks: Record<string, number>): RunDat
         css: [],
       },
     ])),
+    prerendered: [],
   }
 }
 
@@ -111,6 +112,165 @@ describe('routeChanges', () => {
         delta: 10,
       },
     ])
+  })
+})
+
+describe('pageChanges', () => {
+  it('shows the lazy chunk a prerendered URL preloads growing, which its route does not load', () => {
+    const grown = run('pr', [
+      part('.nuxt/dist/client/_nuxt/stats.js', 'app/pages/stats.vue', 100),
+      part('.nuxt/dist/client/_nuxt/HeavyChart.js', 'node_modules/fast-check/lib/fast-check.js', 5200, 'fast-check'),
+    ], { '_nuxt/entry.js': 300, '_nuxt/stats.js': 100, '_nuxt/HeavyChart.js': 5200 })
+    const page = {
+      url: '/stats',
+      size: 2000,
+      gzip: 700,
+      brotli: 600,
+      files: ['_nuxt/entry.js', '_nuxt/stats.js', '_nuxt/HeavyChart.js'],
+    }
+    const before = {
+      ...base,
+      prerendered: [page],
+    }
+    const after = {
+      ...grown,
+      prerendered: [page],
+    }
+    expect(pageChanges(before, after, '/stats', 'gzip')).toEqual({
+      chunks: [
+        {
+          key: '_nuxt/HeavyChart.js',
+          base: 5000,
+          current: 5200,
+          delta: 200,
+        },
+      ],
+      sources: [
+        {
+          key: 'node_modules/fast-check',
+          base: 5000,
+          current: 5200,
+          delta: 200,
+        },
+      ],
+    })
+    expect(routeChanges(before, after, '/stats', 'gzip').chunks).toEqual([])
+  })
+})
+
+describe('prerenderedPages', () => {
+  /** A Docus-like site: a landing page and a catch-all docs page, copied for `en` and `fr`. */
+  function site() {
+    const data = run('pr', [], {
+      '_nuxt/entry.js': 3000,
+      '_nuxt/default.js': 200,
+      '_nuxt/docs.js': 150,
+      '_nuxt/landing.js': 70,
+      '_nuxt/slug.js': 90,
+      '_nuxt/shared.js': 40,
+      '_nuxt/prose.js': 500,
+      '_nuxt/prose.css': 30,
+      '_nuxt/hero.js': 800,
+    })
+    const chunks = data.chunks
+    chunks['_nuxt/entry.js']!.isEntry = true
+    chunks['_nuxt/default.js']!.src = 'layer/app/layouts/default.vue'
+    chunks['_nuxt/docs.js']!.src = 'layer/app/layouts/docs.vue'
+    chunks['_nuxt/landing.js']!.src = 'layer/app/templates/landing.vue'
+    chunks['_nuxt/slug.js']!.src = 'layer/app/pages/[[lang]]/[...slug].vue'
+    chunks['_nuxt/prose.js']!.src = 'node_modules/@nuxt/ui/dist/runtime/components/prose/Callout.vue'
+    chunks['_nuxt/hero.js']!.src = 'node_modules/@nuxt/ui/dist/runtime/components/PageHero.vue'
+    chunks['_nuxt/prose.css']!.type = 'css'
+    chunks['_nuxt/prose.js']!.css = ['_nuxt/prose.css']
+    // The docs page imports a chunk statically, which its HTML preloads too.
+    chunks['_nuxt/slug.js']!.imports = ['_nuxt/shared.js']
+    chunks['_nuxt/slug.js']!.dynamicImports = ['_nuxt/prose.js']
+    chunks['_nuxt/landing.js']!.dynamicImports = ['_nuxt/hero.js']
+    // The `en` routes come first, so picking the first candidate would give `fr` URLs the `en` route.
+    data.routes = ['en', 'fr'].flatMap(locale => [
+      {
+        path: `/${locale}/:lang?`,
+        entries: ['_nuxt/entry.js', '_nuxt/default.js', '_nuxt/landing.js'],
+      },
+      {
+        path: `/${locale}/:lang?/:slug(.*)*`,
+        entries: ['_nuxt/entry.js', '_nuxt/docs.js', '_nuxt/slug.js'],
+      },
+    ])
+    const docs = [
+      '_nuxt/entry.js',
+      '_nuxt/docs.js',
+      '_nuxt/slug.js',
+      '_nuxt/shared.js',
+      '_nuxt/prose.js',
+      '_nuxt/prose.css',
+    ]
+    const page = (url: string, files: string[]) => ({
+      url,
+      size: 9000,
+      gzip: 3000,
+      brotli: 2500,
+      files,
+    })
+    data.prerendered = [
+      page('/en', [
+        '_nuxt/entry.js',
+        '_nuxt/default.js',
+        '_nuxt/landing.js',
+        '_nuxt/hero.js',
+      ]),
+      page('/fr/guide', docs),
+      page('/en/guide', docs),
+      // A page whose layout is set at runtime, so the HTML loads another layout than its route guessed.
+      page('/en/other', [
+        '_nuxt/entry.js',
+        '_nuxt/default.js',
+        '_nuxt/slug.js',
+        '_nuxt/shared.js',
+      ]),
+      // An SPA shell renders no page.
+      page('/200.html', ['_nuxt/entry.js']),
+    ]
+    return prerenderedPages(data, clientChunks(data))
+  }
+  const byUrl = (url: string) => site().find(page => page.url === url)!
+
+  it('picks the route whose page the HTML loads, and the locale copy the URL is in', () => {
+    expect(site().map(page => [page.url, page.route?.path, page.page?.src])).toEqual([
+      // The catch-all also matches `/en`, but the HTML loads the landing page, not the docs page.
+      ['/en', '/en/:lang?', 'layer/app/templates/landing.vue'],
+      ['/fr/guide', '/fr/:lang?/:slug(.*)*', 'layer/app/pages/[[lang]]/[...slug].vue'],
+      ['/en/guide', '/en/:lang?/:slug(.*)*', 'layer/app/pages/[[lang]]/[...slug].vue'],
+      ['/en/other', '/en/:lang?/:slug(.*)*', 'layer/app/pages/[[lang]]/[...slug].vue'],
+      ['/200.html', undefined, undefined],
+    ])
+  })
+
+  it('adds what the HTML preloads beyond the route graph, each chunk with its stylesheet', () => {
+    const page = byUrl('/fr/guide')
+    // `shared.js` is preloaded too, but the docs page imports it statically.
+    expect(page.added.map(file => [file.file, file.gzip])).toEqual([
+      ['_nuxt/prose.js', 530],
+    ])
+    expect(page.addedSize.gzip).toBe(530)
+    expect(page.routeInitial?.gzip).toBe(3000 + 150 + 90 + 40)
+    expect(page.initial.gzip).toBe(3000 + 150 + 90 + 40 + 530)
+    expect(page.notLoaded).toEqual([])
+    expect(byUrl('/en').added.map(file => file.chunk?.src)).toEqual(['@nuxt/ui/dist/runtime/components/PageHero.vue'])
+  })
+
+  it('lists what the route loads and the HTML does not, so the sizes add up', () => {
+    const page = byUrl('/en/other')
+    expect(page.notLoaded.map(file => file.file)).toEqual(['_nuxt/docs.js'])
+    expect(page.added.map(file => file.file)).toEqual(['_nuxt/default.js'])
+    expect(page.routeInitial!.gzip + page.addedSize.gzip - 150).toBe(page.initial.gzip)
+  })
+
+  it('compares an SPA shell with no route', () => {
+    const page = byUrl('/200.html')
+    expect(page.added).toEqual([])
+    expect(page.files.map(file => file.file)).toEqual(['_nuxt/entry.js'])
+    expect(page.initial.gzip).toBe(3000)
   })
 })
 

@@ -24,7 +24,8 @@ Commands:
 Options for analyze:
   --name <name>        Name of the run, to keep several and compare them (default: default)
   --no-serve           Write the reports without opening the analyzer
-  --prerender          Prerender routes while analyzing
+  --prerender          Prerender routes while analyzing, and record what each prerendered
+                       page's HTML preloads. Pick the pages with a layer (--extends)
   --extends <layer>    Extend the app with a layer, as with nuxi (repeatable)
   --log-level <level>  silent, info or verbose
 

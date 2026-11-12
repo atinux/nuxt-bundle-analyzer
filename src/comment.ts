@@ -3,7 +3,7 @@ import type { Env, NuxtData, Run, RunData, SondaReport } from '../viewer/app/uti
 import { promises as fsp } from 'node:fs'
 import { join } from 'pathe'
 
-import { formatBytes, formatDelta, routeSize, toRunData } from '../viewer/app/utils/data'
+import { formatBytes, formatDelta, prerenderedSize, routeSize, toRunData } from '../viewer/app/utils/data'
 
 /** Runs come from builds of a pull request's code, so a file this large is refused rather than parsed. */
 const MAX_FILE_SIZE = 64 * 1024 * 1024
@@ -98,6 +98,15 @@ interface Row {
   delta: number
 }
 
+function toRow(key: string, base: number | undefined, current: number | undefined): Row {
+  return {
+    key,
+    base,
+    current,
+    delta: (current ?? 0) - (base ?? 0),
+  }
+}
+
 /** What changed, the largest changes first, leaving out what changed by less than {@link MIN_CHANGE}. */
 function changes(base: Map<string, number>, current: Map<string, number>): Row[] {
   return [
@@ -106,12 +115,7 @@ function changes(base: Map<string, number>, current: Map<string, number>): Row[]
       ...current.keys(),
     ]),
   ]
-    .map(key => ({
-      key,
-      base: base.get(key),
-      current: current.get(key),
-      delta: (current.get(key) ?? 0) - (base.get(key) ?? 0),
-    }))
+    .map(key => toRow(key, base.get(key), current.get(key)))
     .filter(row => Math.abs(row.delta) >= MIN_CHANGE || row.base === undefined || row.current === undefined)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.key.localeCompare(b.key))
 }
@@ -121,6 +125,20 @@ function routeSizes(data: RunData) {
     route.path,
     bytes(routeSize(data, route).brotli),
   ]))
+}
+
+/** What each prerendered URL's HTML preloads, and the HTML itself. */
+function prerenderedSizes(data: RunData) {
+  return {
+    initial: new Map(data.prerendered.map(page => [
+      page.url,
+      bytes(prerenderedSize(data, page).brotli),
+    ])),
+    html: new Map(data.prerendered.map(page => [
+      page.url,
+      bytes(page.brotli),
+    ])),
+  }
 }
 
 /** The size of each package, and of each file outside one, in a build. */
@@ -141,7 +159,17 @@ function sizeCell(size: number | undefined) {
     : formatBytes(size)
 }
 
-function more(rows: Row[], noun: string) {
+function deltaCell(row: Row) {
+  return row.base === undefined
+    ? 'added'
+    : row.current === undefined
+      ? 'removed'
+      : row.delta === 0
+        ? formatDelta(0)
+        : `${formatDelta(row.delta)}${percent(row.base, row.current)}`
+}
+
+function more(rows: unknown[], noun: string) {
   return rows.length > MAX_ROWS
     ? ['', `And ${rows.length - MAX_ROWS} more ${noun}.`]
     : []
@@ -200,16 +228,39 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
       '',
       '| Initial page load | PR | Δ |',
       '| --- | ---: | ---: |',
-      ...routes.slice(0, MAX_ROWS).map(row => `| ${code(row.key)} | ${sizeCell(row.current)} | ${row.base === undefined
-        ? 'added'
-        : row.current === undefined
-          ? 'removed'
-          : `${formatDelta(row.delta)}${percent(row.base, row.current)}`} |`),
+      ...routes.slice(0, MAX_ROWS).map(row => `| ${code(row.key)} | ${sizeCell(row.current)} | ${deltaCell(row)} |`),
       ...more(routes, 'routes'),
     )
   }
   else if (current.routes.length > 0) {
     lines.push('', `No route loads ${formatBytes(MIN_CHANGE)} more or less before it renders.`)
+  }
+
+  const before = prerenderedSizes(base)
+  const after = prerenderedSizes(current)
+  const urls = [
+    ...new Set([
+      ...before.initial.keys(),
+      ...after.initial.keys(),
+    ]),
+  ]
+    .map(url => ({
+      initial: toRow(url, before.initial.get(url), after.initial.get(url)),
+      html: toRow(url, before.html.get(url), after.html.get(url)),
+    }))
+    .filter(({ initial, html }) => Math.abs(initial.delta) >= MIN_CHANGE || Math.abs(html.delta) >= MIN_CHANGE || initial.base === undefined || initial.current === undefined)
+    .sort((a, b) => Math.abs(b.initial.delta) - Math.abs(a.initial.delta) || Math.abs(b.html.delta) - Math.abs(a.html.delta) || a.initial.key.localeCompare(b.initial.key))
+  if (urls.length > 0) {
+    lines.push(
+      '',
+      '| Prerendered URL | Initial load | Δ | HTML | Δ |',
+      '| --- | ---: | ---: | ---: | ---: |',
+      ...urls.slice(0, MAX_ROWS).map(({ initial, html }) => `| ${code(initial.key)} | ${sizeCell(initial.current)} | ${deltaCell(initial)} | ${sizeCell(html.current)} | ${deltaCell(html)} |`),
+      ...more(urls, 'prerendered URLs'),
+    )
+  }
+  else if (current.prerendered.length > 0) {
+    lines.push('', `No prerendered URL preloads ${formatBytes(MIN_CHANGE)} more or less.`)
   }
 
   const client = changes(sourceSizes(base, 'client'), sourceSizes(current, 'client'))
@@ -225,6 +276,9 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
     `Brotli sizes. Changes under ${formatBytes(MIN_CHANGE)} are left out of the tables.`,
     ...routes.length > 0
       ? ['Initial page load counts the JavaScript and CSS a route loads before it renders.']
+      : [],
+    ...urls.length > 0
+      ? ['Prerendered URLs count the JavaScript and CSS their HTML preloads (module scripts, modulepreload and stylesheets, not prefetch), and the HTML document.']
       : [],
     `Measured by <a href="https://github.com/atinux/nuxt-bundle-analyzer">nuxt-bundle-analyzer</a>${options.sha && SHA_RE.test(options.sha)
       ? ` for <code>${options.sha.slice(0, 7)}</code>`

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import type { ChunkInfo, Metric, PageInfo, Target } from '~/utils/data'
-import { chunkKindLabels, formatBytes, pagesDir } from '~/utils/data'
+import type { ChunkInfo, Metric, PageInfo, PrerenderedInfo, Target } from '~/utils/data'
+import { chunkKindLabels, formatBytes, formatDelta, pagesDir } from '~/utils/data'
 
 const props = defineProps<{
   pages: PageInfo[]
   chunks: ChunkInfo[]
+  /** The prerendered URLs, each listed under the page of its route. */
+  prerendered: PrerenderedInfo[]
   metric: Metric
   search: string
 }>()
@@ -35,6 +37,11 @@ const shown = computed(() => {
 const everyPage = computed(() => props.chunks.filter(chunk => chunk.loadedBy === 'all'))
 const everyPageSize = computed(() => everyPage.value.reduce((sum, chunk) => sum + chunk[props.metric] + chunk.css[props.metric], 0))
 const largest = computed(() => Math.max(1, ...props.pages.map(page => page.initial?.[props.metric] ?? 0)))
+
+const urlsByPage = computed(() => new Map(props.pages.map(page => [
+  page.file,
+  props.prerendered.filter(url => url.route && page.routes.includes(url.route.path)),
+])))
 
 function chunkName(chunk: ChunkInfo) {
   return chunk.file.split('/').pop()
@@ -88,6 +95,7 @@ function chunkName(chunk: ChunkInfo) {
               <template v-else>
                 Parent of <span class="font-mono">{{ page.routes.join(', ') }}</span>
               </template>
+              <span v-if="urlsByPage.get(page.file)?.length" class="text-primary"> · {{ urlsByPage.get(page.file)!.length === 1 ? '1 prerendered URL' : `${urlsByPage.get(page.file)!.length} prerendered URLs` }}</span>
             </p>
           </div>
           <div class="hidden w-28 shrink-0 text-right sm:block">
@@ -141,6 +149,32 @@ function chunkName(chunk: ChunkInfo) {
                   <span class="truncate font-mono text-xs">{{ chunk.src ?? chunkName(chunk) }}</span>
                 </button>
                 <span class="shrink-0 text-muted">{{ formatBytes(chunk[metric] + chunk.css[metric]) }}</span>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="urlsByPage.get(page.file)?.length">
+            <h4 class="text-sm text-highlighted">
+              Prerendered URLs
+            </h4>
+            <p class="mt-1 mb-2 text-xs text-muted">
+              What each URL's HTML preloads: {{ page.initial ? `this route's ${formatBytes(page.initial[metric])}` : 'its route' }}, plus the lazy-loaded components the page rendered.
+            </p>
+            <ul class="space-y-1">
+              <li v-for="url in urlsByPage.get(page.file)" :key="url.url">
+                <button class="flex w-full items-baseline gap-3 text-left text-sm hover:text-primary" :aria-expanded="expanded.has(`${page.file} ${url.url}`)" @click="toggle(`${page.file} ${url.url}`)">
+                  <UIcon name="i-lucide-chevron-right" class="size-3.5 shrink-0 self-center text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(`${page.file} ${url.url}`) }" />
+                  <span class="min-w-0 flex-1 truncate font-mono text-xs">{{ url.url }}</span>
+                  <span class="hidden shrink-0 text-xs text-muted sm:inline">HTML {{ formatBytes(url.html[metric]) }}</span>
+                  <span class="hidden w-36 shrink-0 text-right text-xs text-muted sm:inline">{{ url.added.length ? `${formatDelta(url.addedSize[metric])} in ${url.added.length === 1 ? '1 chunk' : `${url.added.length} chunks`}` : 'Nothing added' }}</span>
+                  <span class="shrink-0 text-highlighted">{{ formatBytes(url.initial[metric]) }}</span>
+                </button>
+                <div v-if="expanded.has(`${page.file} ${url.url}`)" class="mt-1 mb-2 ps-6">
+                  <PreloadedList v-if="url.added.length" :files="url.added" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+                  <p v-else class="text-sm text-muted">
+                    Its HTML preloads nothing beyond its route.
+                  </p>
+                </div>
               </li>
             </ul>
           </section>

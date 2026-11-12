@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { SelectItem, TabsItem } from '@nuxt/ui'
 import type { Env, Metric, Run, RunData, Target } from '~/utils/data'
-import { clientChunks, fetchRun, fetchRuns, hostedBranch, hostedPull, pages, serverChunks } from '~/utils/data'
+import { clientChunks, fetchRun, fetchRuns, hostedBranch, hostedPull, pages, prerenderedPages, serverChunks } from '~/utils/data'
 
-type View = 'history' | 'pages' | 'chunks' | 'issues' | 'compare'
+type View = 'history' | 'pages' | 'chunks' | 'issues' | 'prerendered' | 'compare'
 
 /** The pull request the hosted viewer shows, when it is opened from one. */
 const pull = hostedPull()
@@ -17,9 +17,16 @@ const VIEWS: View[] = branch
       'pages',
       'chunks',
       'issues',
+      'prerendered',
       'compare',
     ]
-  : ['pages', 'chunks', 'issues', 'compare']
+  : [
+      'pages',
+      'chunks',
+      'issues',
+      'prerendered',
+      'compare',
+    ]
 const DEFAULT_VIEW = VIEWS[0]!
 
 const route = useRoute()
@@ -229,8 +236,9 @@ function compareCommit(sha: string) {
   })
 }
 
-/** Pages are about the client build, which Nitro has no equivalent of. */
-const env = computed<Env>(() => state.view === 'pages'
+/** Pages and prerendered URLs are about the client build, which Nitro has no equivalent of. */
+const clientOnly = computed(() => state.view === 'pages' || state.view === 'prerendered')
+const env = computed<Env>(() => clientOnly.value
   ? 'client'
   : state.env)
 function chunksOf(run: RunData | undefined, of: Env) {
@@ -241,9 +249,14 @@ function chunksOf(run: RunData | undefined, of: Env) {
     : []
 }
 const chunks = computed(() => chunksOf(data.value, env.value))
+const clientChunkList = computed(() => chunksOf(data.value, 'client'))
 const pageList = computed(() => data.value
-  ? pages(data.value, chunksOf(data.value, 'client'))
+  ? pages(data.value, clientChunkList.value)
   : [])
+const prerenderedList = computed(() => data.value
+  ? prerenderedPages(data.value, clientChunkList.value)
+  : [])
+const largestPage = computed(() => Math.max(0, ...pageList.value.map(page => page.initial?.[state.metric] ?? 0)))
 
 const focusedChunk = ref<string>()
 async function openChunk(file: string) {
@@ -301,6 +314,12 @@ const viewItems = computed<TabsItem[]>(() => [
   { label: 'Pages', value: 'pages' },
   { label: 'Chunks', value: 'chunks' },
   { label: 'Issues', value: 'issues', badge: issueCount.value || undefined },
+  // Like History, only there when there is something to show.
+  ...prerenderedList.value.length
+    ? [
+        { label: 'Prerendered', value: 'prerendered' },
+      ]
+    : [],
   { label: 'Compare', value: 'compare' },
 ])
 /** Whether there is a build to show: in the run, or in History, in any commit. */
@@ -390,11 +409,11 @@ const metricItems: TabsItem[] = [
                 </template>
                 <!-- History shows every commit, so it has no run to pick. -->
                 <USelect v-if="state.view !== 'history'" v-model="state.run" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Run" />
-                <UTabs v-if="state.view !== 'pages'" v-model="state.env" :items="envItems" :content="false" size="xs" />
+                <UTabs v-if="!clientOnly" v-model="state.env" :items="envItems" :content="false" size="xs" />
                 <UTabs v-model="state.metric" :items="metricItems" :content="false" size="xs" aria-label="Size" />
               </template>
               <template #right>
-                <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'issues' ? 'Search packages and files…' : state.view === 'compare' ? 'Search routes or files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
+                <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'prerendered' ? 'Search URLs, routes and files…' : state.view === 'issues' ? 'Search packages and files…' : state.view === 'compare' ? 'Search routes or files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
               </template>
             </UDashboardToolbar>
           </div>
@@ -457,6 +476,7 @@ const metricItems: TabsItem[] = [
             v-else-if="state.view === 'pages' && data"
             :pages="pageList"
             :chunks="chunks"
+            :prerendered="prerenderedList"
             :metric="state.metric"
             :search="state.search"
             @inspect="inspect"
@@ -485,6 +505,21 @@ const metricItems: TabsItem[] = [
             icon="i-lucide-file-x"
             :title="env === 'client' ? 'No Client Build to Show' : 'No Nitro Build to Show'"
             description="This run has no report of this build. Run nuxt analyze again to create it."
+          />
+
+          <PrerenderedView
+            v-else-if="state.view === 'prerendered' && prerenderedList.length"
+            :pages="prerenderedList"
+            :metric="state.metric"
+            :search="state.search"
+            :largest="largestPage"
+            @open-chunk="openChunk"
+          />
+          <UEmpty
+            v-else-if="state.view === 'prerendered' && data"
+            icon="i-lucide-file-x"
+            title="No Prerendered URLs in This Run"
+            description="Run nuxt-bundle-analyzer again with --prerender to record what the HTML of each prerendered page preloads."
           />
 
           <template v-else-if="state.view === 'compare'">
