@@ -6,8 +6,6 @@ const props = defineProps<{
   pages: PrerenderedInfo[]
   metric: Metric
   search: string
-  /** The largest initial load of the page list, so both views draw their bars to the same scale. */
-  largest: number
 }>()
 
 const emit = defineEmits<{
@@ -40,7 +38,6 @@ function largestBy(size: (page: PrerenderedInfo) => number) {
 }
 const largestLoad = computed(() => largestBy(page => page.initial[props.metric]))
 const mostAdded = computed(() => largestBy(page => page.addedSize[props.metric]))
-const scale = computed(() => Math.max(1, props.largest, ...props.pages.map(page => page.initial[props.metric])))
 
 function chunkCount(files: PreloadedFile[]) {
   return files.length === 1
@@ -85,8 +82,6 @@ function chunkCount(files: PreloadedFile[]) {
     <div class="flex items-center gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs text-muted" aria-hidden="true">
       <span class="w-4 shrink-0" />
       <span class="flex-1">{{ pages.length === 1 ? '1 Prerendered URL' : `${pages.length} Prerendered URLs` }}</span>
-      <span class="hidden items-center gap-1.5 lg:flex"><span class="size-2 rounded-xs bg-primary" />From its route</span>
-      <span class="hidden items-center gap-1.5 lg:flex"><span class="size-2 rounded-xs bg-warning" />Added by the rendered page</span>
       <span class="hidden w-20 shrink-0 text-right sm:block">HTML</span>
       <span class="w-32 shrink-0 text-right sm:w-48">Initial Load</span>
     </div>
@@ -119,20 +114,21 @@ function chunkCount(files: PreloadedFile[]) {
             <p class="text-sm text-highlighted">
               <span class="sr-only">Initial load </span>{{ formatBytes(page.initial[metric]) }}
             </p>
-            <div class="mt-1 h-1 rounded-full bg-elevated">
-              <div class="ms-auto flex h-1 overflow-hidden rounded-full" :style="{ width: `${Math.round(page.initial[metric] / scale * 100)}%` }">
-                <div class="h-1 bg-warning" :style="{ width: `${page.initial[metric] ? page.addedSize[metric] / page.initial[metric] * 100 : 0}%` }" />
-                <div class="h-1 flex-1" :class="page.route ? 'bg-primary' : 'bg-accented'" />
-              </div>
-            </div>
+            <!-- Adds up to the initial load: what its HTML preloads from its route, and what the rendered page adds, when it adds any. -->
+            <p v-if="page.route && page.added.length" class="text-xs whitespace-nowrap">
+              <span class="text-primary"><span class="sr-only">From its route </span>{{ formatBytes(page.initial[metric] - page.addedSize[metric]) }}</span>
+              <span class="text-muted"> + </span>
+              <span class="text-warning"><span class="sr-only">added by the rendered page </span>{{ formatBytes(page.addedSize[metric]) }}</span>
+            </p>
           </div>
         </button>
 
         <div v-if="expanded.has(page.url)" class="space-y-6 border-t border-default px-4 py-4 sm:ps-12">
           <template v-if="page.route">
             <section>
-              <h4 class="mb-2 text-sm text-highlighted">
-                From Its Route
+              <!-- The dots name the colors of the row's initial load. -->
+              <h4 class="mb-2 flex items-center gap-1.5 text-sm text-highlighted">
+                <span class="size-2 rounded-xs bg-primary" />From Its Route
               </h4>
               <div class="flex items-baseline justify-between gap-3 text-sm">
                 <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="page.page && emit('openChunk', page.page.file)">
@@ -147,8 +143,8 @@ function chunkCount(files: PreloadedFile[]) {
 
             <section>
               <div class="flex items-baseline justify-between gap-3">
-                <h4 class="text-sm text-highlighted">
-                  Added by the Rendered Page
+                <h4 class="flex items-center gap-1.5 text-sm text-highlighted">
+                  <span class="size-2 rounded-xs bg-warning" />Added by the Rendered Page
                 </h4>
                 <span v-if="page.added.length" class="shrink-0 text-sm text-muted">{{ formatDelta(page.addedSize[metric]) }} in {{ chunkCount(page.added) }}</span>
               </div>

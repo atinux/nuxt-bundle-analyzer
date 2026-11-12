@@ -257,7 +257,6 @@ const pageList = computed(() => data.value
 const prerenderedList = computed(() => data.value?.prerendered.length
   ? prerenderedPages(data.value, clientChunkList.value)
   : [])
-const largestPage = computed(() => Math.max(0, ...pageList.value.map(page => page.initial?.[state.metric] ?? 0)))
 
 const focusedChunk = ref<string>()
 async function openChunk(file: string) {
@@ -513,7 +512,6 @@ const metricItems: TabsItem[] = [
             :pages="prerenderedList"
             :metric="state.metric"
             :search="state.search"
-            :largest="largestPage"
             @open-chunk="openChunk"
           />
           <UEmpty
