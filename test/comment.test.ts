@@ -156,14 +156,20 @@ describe('renderComment', () => {
     expect(markdown).toContain('Prerendered URLs count the JavaScript and CSS their HTML preloads')
   })
 
-  it('says no prerendered URL changed when every change is under 100 B, and leaves the table out without any', () => {
+  it('says no prerendered URL changed when every change is under 100 B or the base has none, and leaves the table out without any', () => {
     const markdown = renderComment(prerender(run({}), {
       '/a': [1000, 1000],
     }), prerender(run({}), {
       '/a': [1099, 1099],
     }))
     expect(urlLines(markdown)).toEqual([])
-    expect(markdown).toContain('No prerendered URL preloads 100 B more or less.')
+    expect(markdown).toContain('No prerendered URL\'s initial load or HTML changes by 100 B or more.')
+    // A base built without `--prerender` would list every URL as added.
+    const noBase = renderComment(run({}), prerender(run({}), {
+      '/a': [1000, 1000],
+    }))
+    expect(urlLines(noBase)).toEqual([])
+    expect(noBase).toContain('The base run has no prerendered URLs to compare with')
     const without = renderComment(run({ '/': 1000 }), run({ '/': 2000 }))
     expect(without).not.toContain('Prerendered URL')
     expect(without).not.toContain('prerendered URL')

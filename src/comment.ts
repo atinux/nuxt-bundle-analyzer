@@ -239,10 +239,13 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
   const before = prerenderedSizes(base)
   const after = prerenderedSizes(current)
   const urls = [
-    ...new Set([
-      ...before.initial.keys(),
-      ...after.initial.keys(),
-    ]),
+    // A base built without `--prerender` has no URLs to compare with, so every URL would read as added.
+    ...new Set(base.prerendered.length === 0
+      ? []
+      : [
+          ...before.initial.keys(),
+          ...after.initial.keys(),
+        ]),
   ]
     .map(url => ({
       initial: toRow(url, before.initial.get(url), after.initial.get(url)),
@@ -260,7 +263,9 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
     )
   }
   else if (current.prerendered.length > 0) {
-    lines.push('', `No prerendered URL preloads ${formatBytes(MIN_CHANGE)} more or less.`)
+    lines.push('', base.prerendered.length === 0
+      ? 'The base run has no prerendered URLs to compare with: build it with <code>--prerender</code> too.'
+      : `No prerendered URL's initial load or HTML changes by ${formatBytes(MIN_CHANGE)} or more.`)
   }
 
   const client = changes(sourceSizes(base, 'client'), sourceSizes(current, 'client'))

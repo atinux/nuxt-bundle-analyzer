@@ -41,8 +41,7 @@ const largest = computed(() => Math.max(1, ...props.pages.map(page => page.initi
 const urlsByPage = computed(() => new Map(props.pages.map(page => [
   page.file,
   // Under the page that renders its route only, not also under the parents of that page.
-  // Both lists are built from the same client chunks, so the page's chunk is the same object.
-  props.prerendered.filter(url => url.page === page.chunk),
+  props.prerendered.filter(url => url.page?.file === page.chunk.file),
 ])))
 
 function chunkName(chunk: ChunkInfo) {
