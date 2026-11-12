@@ -20,6 +20,11 @@ function toggle(url: string) {
 
 const sorted = computed(() => [...props.urls].sort((a, b) => b.initial[props.metric] - a.initial[props.metric]))
 
+/** A size's share of the URL's initial load, the scale of every bar under the URL. */
+function share(size: number, url: PrerenderedInfo) {
+  return `${Math.max(1, Math.round(size / (url.initial[props.metric] || 1) * 100))}%`
+}
+
 function chunkCount(count: number) {
   return count === 1
     ? '1 chunk'
@@ -45,6 +50,19 @@ function chunkCount(count: number) {
 
       <div v-if="expanded.has(url.url)" class="mt-2 mb-3 space-y-4 ps-6">
         <template v-if="url.route">
+          <!-- With what the page added, this adds up to the URL's initial load. -->
+          <section>
+            <div class="flex items-baseline justify-between gap-3">
+              <h5 class="flex items-center gap-1.5 text-xs text-highlighted">
+                <span class="size-2 rounded-xs bg-primary" />From Its Route
+              </h5>
+              <span class="shrink-0 text-xs text-muted">{{ formatBytes(url.initial[metric] - url.addedSize[metric]) }}</span>
+            </div>
+            <div class="mt-1 h-1 rounded-full bg-elevated">
+              <div class="h-1 rounded-full bg-primary" :style="{ width: share(url.initial[metric] - url.addedSize[metric], url) }" />
+            </div>
+          </section>
+
           <section>
             <div class="flex items-baseline justify-between gap-3">
               <h5 class="flex items-center gap-1.5 text-xs text-highlighted">
@@ -55,7 +73,7 @@ function chunkCount(count: number) {
             <p class="mt-1 mb-2 text-xs text-muted">
               Lazy-loaded components the page rendered: its HTML preloads them, but the route's static imports don't reach them.
             </p>
-            <PreloadedList v-if="url.added.length" :files="url.added" :metric="metric" bar-class="bg-warning" @open-chunk="file => emit('openChunk', file)" />
+            <PreloadedList v-if="url.added.length" :files="url.added" :metric="metric" :scale="url.initial[metric]" bar-class="bg-warning" @open-chunk="file => emit('openChunk', file)" />
             <p v-else class="text-xs text-muted">
               Its HTML preloads nothing beyond its route.
             </p>
@@ -71,7 +89,7 @@ function chunkCount(count: number) {
             <p class="mt-1 mb-2 text-xs text-muted">
               Files its route's static imports reach that its HTML doesn't preload, such as a stylesheet Nuxt inlined in the HTML or a layout picked at runtime.
             </p>
-            <PreloadedList :files="url.notLoaded" :metric="metric" bar-class="bg-inverted/60" @open-chunk="file => emit('openChunk', file)" />
+            <PreloadedList :files="url.notLoaded" :metric="metric" :scale="url.initial[metric]" bar-class="bg-inverted/60" @open-chunk="file => emit('openChunk', file)" />
           </section>
         </template>
 
@@ -79,7 +97,7 @@ function chunkCount(count: number) {
           <p class="mb-2 text-xs text-muted">
             Its HTML loads no page's chunk, as for an SPA shell, so this is everything it preloads.
           </p>
-          <PreloadedList :files="url.files" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+          <PreloadedList :files="url.files" :metric="metric" :scale="url.initial[metric]" @open-chunk="file => emit('openChunk', file)" />
         </section>
       </div>
     </li>

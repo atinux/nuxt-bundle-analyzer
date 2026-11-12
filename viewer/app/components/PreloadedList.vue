@@ -7,6 +7,8 @@ const props = defineProps<{
   metric: Metric
   /** The color of the bars, such as the one the list's heading names. */
   barClass?: string
+  /** The size the bars measure against, such as the URL's initial load. Defaults to the whole list. */
+  scale?: number
 }>()
 
 const emit = defineEmits<{
@@ -21,8 +23,7 @@ const sorted = computed(() => [...props.files].sort((a, b) => b[props.metric] - 
 const shown = computed(() => showAll.value
   ? sorted.value
   : sorted.value.slice(0, LIMIT))
-/** A file's share of the whole list, not only of the files shown, so the bars show what weighs most at a glance. */
-const total = computed(() => props.files.reduce((sum, file) => sum + file[props.metric], 0) || 1)
+const total = computed(() => props.scale || props.files.reduce((sum, file) => sum + file[props.metric], 0) || 1)
 const share = (file: PreloadedFile) => `${Math.max(1, Math.round(file[props.metric] / total.value * 100))}%`
 </script>
 

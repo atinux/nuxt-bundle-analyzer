@@ -54,10 +54,13 @@ const largest = computed(() => Math.max(1, ...props.pages.map(page => page.initi
 function chunkSize(chunk: ChunkInfo) {
   return chunk[props.metric] + chunk.css[props.metric]
 }
-/** A chunk's share of the chunks it is listed with, so the bars show what weighs most at a glance. */
-function share(chunk: ChunkInfo, chunks: ChunkInfo[]) {
-  const total = chunks.reduce((sum, other) => sum + chunkSize(other), 0) || 1
-  return `${Math.max(1, Math.round(chunkSize(chunk) / total * 100))}%`
+/**
+ * A size's share of the page's initial load, so every bar of a page is to the same scale and shows what weighs most.
+ * A parent page renders no route of its own, so its chunks measure against the ones they are listed with.
+ */
+function share(size: number, page: PageInfo, chunks: ChunkInfo[]) {
+  const total = page.initial?.[props.metric] || chunks.reduce((sum, chunk) => sum + chunkSize(chunk), 0) || 1
+  return `${Math.max(1, Math.round(size / total * 100))}%`
 }
 
 function chunkName(chunk: ChunkInfo) {
@@ -133,13 +136,26 @@ function chunkName(chunk: ChunkInfo) {
         </button>
 
         <div v-if="expanded.has(page.file)" class="space-y-6 border-t border-default px-4 py-4 sm:ps-12">
-          <ChunkContents :parts="page.chunk.contents" :metric="metric" @inspect="target => emit('inspect', target)" />
+          <ChunkContents :parts="page.chunk.contents" :metric="metric" :scale="page.initial?.[metric]" @inspect="target => emit('inspect', target)" />
 
-          <section v-if="page.loads.length">
+          <section v-if="page.initial || page.loads.length">
             <h4 class="mb-2 text-sm text-highlighted">
               Also Loaded Before It Renders
             </h4>
             <ul class="space-y-1.5">
+              <!-- With the page's chunk above, these add up to its initial load. -->
+              <li v-if="page.initial">
+                <div class="flex items-baseline justify-between gap-3 text-sm">
+                  <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', everyPage[0]?.file ?? '')">
+                    <UBadge :label="chunkKindLabels.entry" color="neutral" variant="subtle" size="sm" />
+                    <span class="truncate text-xs">Loaded on every page, {{ everyPage.length === 1 ? '1 chunk' : `${everyPage.length} chunks` }}</span>
+                  </button>
+                  <span class="shrink-0 text-muted">{{ formatBytes(everyPageSize) }}</span>
+                </div>
+                <div class="mt-1 h-1 rounded-full bg-elevated">
+                  <div class="h-1 rounded-full bg-primary" :style="{ width: share(everyPageSize, page, everyPage) }" />
+                </div>
+              </li>
               <li v-for="chunk in page.loads" :key="chunk.file">
                 <div class="flex items-baseline justify-between gap-3 text-sm">
                   <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', chunk.file)">
@@ -150,7 +166,7 @@ function chunkName(chunk: ChunkInfo) {
                   <span class="shrink-0 text-muted">{{ formatBytes(chunkSize(chunk)) }}</span>
                 </div>
                 <div class="mt-1 h-1 rounded-full bg-elevated">
-                  <div class="h-1 rounded-full bg-primary" :style="{ width: share(chunk, page.loads) }" />
+                  <div class="h-1 rounded-full bg-primary" :style="{ width: share(chunkSize(chunk), page, page.loads) }" />
                 </div>
               </li>
             </ul>
@@ -171,7 +187,7 @@ function chunkName(chunk: ChunkInfo) {
                   <span class="shrink-0 text-muted">{{ formatBytes(chunkSize(chunk)) }}</span>
                 </div>
                 <div class="mt-1 h-1 rounded-full bg-elevated">
-                  <div class="h-1 rounded-full bg-primary" :style="{ width: share(chunk, page.lazy) }" />
+                  <div class="h-1 rounded-full bg-primary" :style="{ width: share(chunkSize(chunk), page, page.lazy) }" />
                 </div>
               </li>
             </ul>
