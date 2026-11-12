@@ -14,6 +14,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   inspect: [target: Target]
   openChunk: [file: string]
+  openUrl: [url: string]
 }>()
 
 const expanded = ref(new Set<string>())
@@ -159,30 +160,17 @@ function chunkName(chunk: ChunkInfo) {
               Prerendered URLs
             </h4>
             <p class="mt-1 mb-2 text-xs text-muted">
-              What each URL's HTML preloads: {{ page.initial ? `this route's ${formatBytes(page.initial[metric])}` : 'its route' }}, plus the lazy-loaded components the page rendered, minus any route files the HTML doesn't load, such as stylesheets Nuxt inlines.
+              What each URL's HTML preloads: {{ page.initial ? `this route's ${formatBytes(page.initial[metric])}` : 'its route' }}, plus the lazy-loaded components the page rendered, minus any route files the HTML doesn't load, such as stylesheets Nuxt inlines. Open one to see its files in Prerendered.
             </p>
             <ul class="space-y-1">
               <li v-for="url in urlsByPage.get(page.file)" :key="url.url">
-                <button class="flex w-full items-baseline gap-3 text-left text-sm hover:text-primary" :aria-expanded="expanded.has(`${page.file} ${url.url}`)" @click="toggle(`${page.file} ${url.url}`)">
-                  <UIcon name="i-lucide-chevron-right" class="size-3.5 shrink-0 self-center text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(`${page.file} ${url.url}`) }" />
+                <button class="group flex w-full items-baseline gap-3 text-left text-sm hover:text-primary" @click="emit('openUrl', url.url)">
                   <span class="min-w-0 flex-1 truncate font-mono text-xs">{{ url.url }}</span>
                   <span class="hidden shrink-0 text-xs text-muted sm:inline">HTML {{ formatBytes(url.html[metric]) }}</span>
                   <span class="hidden w-36 shrink-0 text-right text-xs text-muted sm:inline">{{ url.added.length ? `${formatDelta(url.addedSize[metric])} in ${url.added.length === 1 ? '1 chunk' : `${url.added.length} chunks`}` : 'Nothing added' }}</span>
-                  <span class="shrink-0 text-highlighted">{{ formatBytes(url.initial[metric]) }}</span>
+                  <span class="shrink-0 text-highlighted group-hover:text-primary">{{ formatBytes(url.initial[metric]) }}</span>
+                  <UIcon name="i-lucide-arrow-right" class="size-3.5 shrink-0 self-center text-muted group-hover:text-primary" />
                 </button>
-                <div v-if="expanded.has(`${page.file} ${url.url}`)" class="mt-1 mb-2 space-y-2 ps-6">
-                  <PreloadedList v-if="url.added.length" :files="url.added" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
-                  <p v-else class="text-xs text-muted">
-                    Its HTML preloads nothing beyond its route.
-                  </p>
-                  <!-- Listed with their size, so the route plus what was added minus these is the URL's total. -->
-                  <template v-if="url.notLoaded.length">
-                    <p class="text-xs text-muted">
-                      Not loaded by the HTML: {{ formatDelta(-url.notLoaded.reduce((sum, file) => sum + file[metric], 0)) }} in {{ url.notLoaded.length === 1 ? '1 chunk' : `${url.notLoaded.length} chunks` }}
-                    </p>
-                    <PreloadedList :files="url.notLoaded" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
-                  </template>
-                </div>
               </li>
             </ul>
           </section>

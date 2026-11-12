@@ -6,6 +6,8 @@ const props = defineProps<{
   pages: PrerenderedInfo[]
   metric: Metric
   search: string
+  /** A URL to expand and scroll to, such as one opened from Pages. */
+  focus?: string
 }>()
 
 const emit = defineEmits<{
@@ -18,6 +20,12 @@ function toggle(url: string) {
     ? expanded.value.delete(url)
     : expanded.value.add(url)
 }
+async function showUrl(url: string) {
+  expanded.value.add(url)
+  await nextTick()
+  document.getElementById(`url-${url}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+}
+watch(() => props.focus, url => url && showUrl(url), { immediate: true })
 
 const shown = computed(() => {
   const query = props.search.trim().toLowerCase()
@@ -86,7 +94,7 @@ function chunkCount(files: PreloadedFile[]) {
       <span class="w-32 shrink-0 text-right sm:w-48">Initial Load</span>
     </div>
     <ul class="divide-y divide-default">
-      <li v-for="page in shown" :key="page.url">
+      <li v-for="page in shown" :id="`url-${page.url}`" :key="page.url" class="scroll-mt-4">
         <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(page.url)" @click="toggle(page.url)">
           <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(page.url) }" />
           <div class="min-w-0 flex-1">

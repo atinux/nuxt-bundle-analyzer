@@ -272,6 +272,19 @@ async function openChunk(file: string) {
   focusedChunk.value = file
 }
 
+const focusedUrl = ref<string>()
+async function openUrl(url: string) {
+  // The Pages search can match a page by files the Prerendered search doesn't look at, which would hide the URL.
+  Object.assign(state, {
+    view: 'prerendered',
+    search: '',
+  })
+  // Cleared first, so opening the same URL again still scrolls to it.
+  focusedUrl.value = undefined
+  await nextTick()
+  focusedUrl.value = url
+}
+
 const inspected = computed<Target | undefined>(() => state.package
   ? { kind: 'package', id: state.package }
   : state.file
@@ -481,6 +494,7 @@ const metricItems: TabsItem[] = [
             :search="state.search"
             @inspect="inspect"
             @open-chunk="openChunk"
+            @open-url="openUrl"
           />
 
           <ChunksView
@@ -512,6 +526,7 @@ const metricItems: TabsItem[] = [
             :pages="prerenderedList"
             :metric="state.metric"
             :search="state.search"
+            :focus="focusedUrl"
             @open-chunk="openChunk"
           />
           <UEmpty
