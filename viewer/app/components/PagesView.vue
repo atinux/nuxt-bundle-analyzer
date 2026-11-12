@@ -40,7 +40,9 @@ const largest = computed(() => Math.max(1, ...props.pages.map(page => page.initi
 
 const urlsByPage = computed(() => new Map(props.pages.map(page => [
   page.file,
-  props.prerendered.filter(url => url.route && page.routes.includes(url.route.path)),
+  // Under the page that renders its route only, not also under the parents of that page.
+  // Both lists are built from the same client chunks, so the page's chunk is the same object.
+  props.prerendered.filter(url => url.page === page.chunk),
 ])))
 
 function chunkName(chunk: ChunkInfo) {
@@ -158,7 +160,7 @@ function chunkName(chunk: ChunkInfo) {
               Prerendered URLs
             </h4>
             <p class="mt-1 mb-2 text-xs text-muted">
-              What each URL's HTML preloads: {{ page.initial ? `this route's ${formatBytes(page.initial[metric])}` : 'its route' }}, plus the lazy-loaded components the page rendered.
+              What each URL's HTML preloads: {{ page.initial ? `this route's ${formatBytes(page.initial[metric])}` : 'its route' }}, plus the lazy-loaded components the page rendered, minus any route files the HTML doesn't load, such as stylesheets Nuxt inlines.
             </p>
             <ul class="space-y-1">
               <li v-for="url in urlsByPage.get(page.file)" :key="url.url">
@@ -169,11 +171,18 @@ function chunkName(chunk: ChunkInfo) {
                   <span class="hidden w-36 shrink-0 text-right text-xs text-muted sm:inline">{{ url.added.length ? `${formatDelta(url.addedSize[metric])} in ${url.added.length === 1 ? '1 chunk' : `${url.added.length} chunks`}` : 'Nothing added' }}</span>
                   <span class="shrink-0 text-highlighted">{{ formatBytes(url.initial[metric]) }}</span>
                 </button>
-                <div v-if="expanded.has(`${page.file} ${url.url}`)" class="mt-1 mb-2 ps-6">
+                <div v-if="expanded.has(`${page.file} ${url.url}`)" class="mt-1 mb-2 space-y-2 ps-6">
                   <PreloadedList v-if="url.added.length" :files="url.added" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
-                  <p v-else class="text-sm text-muted">
+                  <p v-else class="text-xs text-muted">
                     Its HTML preloads nothing beyond its route.
                   </p>
+                  <!-- Listed with their size, so the route plus what was added minus these is the URL's total. -->
+                  <template v-if="url.notLoaded.length">
+                    <p class="text-xs text-muted">
+                      Not loaded by the HTML: {{ formatDelta(-url.notLoaded.reduce((sum, file) => sum + file[metric], 0)) }} in {{ url.notLoaded.length === 1 ? '1 chunk' : `${url.notLoaded.length} chunks` }}
+                    </p>
+                    <PreloadedList :files="url.notLoaded" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+                  </template>
                 </div>
               </li>
             </ul>
