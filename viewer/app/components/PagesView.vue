@@ -17,8 +17,6 @@ const emit = defineEmits<{
 }>()
 
 const expanded = ref(new Set<string>())
-/** The key of the chunks every page loads in `expanded`, which no page file can be. */
-const EVERY_PAGE = ' every page'
 function toggle(file: string) {
   expanded.value.has(file)
     ? expanded.value.delete(file)
@@ -50,17 +48,6 @@ const shownOtherUrls = computed(() => query.value
   : otherUrls.value)
 
 const everyPage = computed(() => props.chunks.filter(chunk => chunk.loadedBy === 'all'))
-/** The app's entry, which leads the label of the chunks every page loads. */
-const entryName = computed(() => everyPage.value.find(chunk => chunk.kind === 'entry')?.file.split('/').pop())
-/** The rest of the chunks every page loads, after the entry. */
-const everyPageOthers = computed(() => {
-  const count = everyPage.value.length - (entryName.value ? 1 : 0)
-  return `${count} ${entryName.value
-    ? 'other '
-    : ''}${count === 1
-    ? 'chunk'
-    : 'chunks'}`
-})
 const everyPageSize = computed(() => everyPage.value.reduce((sum, chunk) => sum + chunk[props.metric] + chunk.css[props.metric], 0))
 
 /** What a page's route loads before it renders, apart from the chunks every page loads, which the table above lists. */
@@ -70,27 +57,16 @@ function pageSize(page: PageInfo) {
 </script>
 
 <template>
-  <div class="rounded-lg ring ring-default">
+  <section class="rounded-lg ring ring-default">
     <!-- Every page loads these before it renders, so they are listed once rather than in each page's size. -->
-    <div class="flex items-center gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs text-muted" aria-hidden="true">
-      <span class="flex-1">Loaded on Every Page</span>
-      <span class="w-32 shrink-0 text-right">Size</span>
-    </div>
-    <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(EVERY_PAGE)" @click="toggle(EVERY_PAGE)">
-      <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(EVERY_PAGE) }" />
-      <p class="min-w-0 flex-1 text-sm text-highlighted">
-        <template v-if="entryName">
-          <span class="font-mono">{{ entryName }}</span> and
-        </template>{{ everyPageOthers }}
-      </p>
-      <p class="w-32 shrink-0 text-right text-sm text-highlighted">
-        <span class="sr-only">Size </span>{{ formatBytes(everyPageSize) }}
-      </p>
-    </button>
-    <div v-if="expanded.has(EVERY_PAGE)" class="border-t border-default px-4 py-4 sm:ps-12">
+    <h3 class="flex items-center justify-between gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs text-muted">
+      <span>Loaded on Every Page</span>
+      <span class="text-sm text-highlighted">{{ formatBytes(everyPageSize) }}</span>
+    </h3>
+    <div class="px-4 py-3">
       <ChunkList :chunks="everyPage" :metric="metric" expandable @open-chunk="file => emit('openChunk', file)" @inspect="target => emit('inspect', target)" />
     </div>
-  </div>
+  </section>
 
   <div class="rounded-lg ring ring-default">
     <!-- The columns are named once here rather than on every row. -->
