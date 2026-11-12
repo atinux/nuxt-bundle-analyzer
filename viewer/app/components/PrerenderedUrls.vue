@@ -81,14 +81,16 @@ function chunkCount(count: number) {
                 <span class="size-2 rounded-xs bg-warning" />Added by the Rendered Page
               </h5>
               <span v-if="url.added.length" class="shrink-0 text-xs text-muted">{{ formatDelta(url.addedSize[metric]) }} in {{ chunkCount(url.added.length) }}</span>
+              <span v-else class="shrink-0 text-xs text-muted">0 B</span>
             </div>
-            <p class="mt-1 mb-2 text-xs text-muted">
-              Lazy-loaded components the page rendered: its HTML preloads them, but the route's static imports don't reach them.
-            </p>
-            <PreloadedList v-if="url.added.length" :files="url.added" :metric="metric" :scale="url.size" bar-class="bg-warning" @open-chunk="file => emit('openChunk', file)" />
-            <p v-else class="text-xs text-muted">
-              Its HTML preloads nothing beyond its route.
-            </p>
+            <template v-if="url.added.length">
+              <p class="mt-1 mb-2 text-xs text-muted">
+                Lazy-loaded components the page rendered: its HTML preloads them, but the route's static imports don't reach them.
+              </p>
+              <PreloadedList :files="url.added" :metric="metric" :scale="url.size" bar-class="bg-warning" @open-chunk="file => emit('openChunk', file)" />
+            </template>
+            <!-- An empty bar, as the row above has a full one: the page rendered no lazy-loaded component. -->
+            <div v-else class="mt-1 h-1 rounded-full bg-elevated" />
           </section>
 
           <section v-if="url.notLoaded.length">
