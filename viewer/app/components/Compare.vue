@@ -491,7 +491,7 @@ function percent(delta: number, base: number) {
                 </template>
                 <template v-else>
                   {{ formatBytes(row[side]!) }}
-                  <!-- Adds up to the size, as in the Prerendered tab: from its route, and what the rendered page adds, when it adds any. -->
+                  <!-- Adds up to the size, as in Pages: from its route, and what the rendered page adds, when it adds any. -->
                   <p v-if="row.added[side]" class="text-xs">
                     <span class="text-primary"><span class="sr-only">From its route </span>{{ formatBytes(row[side]! - row.added[side]) }}</span>
                     <span class="text-muted"> + </span>
@@ -503,7 +503,7 @@ function percent(delta: number, base: number) {
                 <UBadge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New URL' : 'Removed'" color="neutral" variant="subtle" />
                 <template v-else>
                   <span :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
-                  <!-- The dots name the colors of the sizes, as the Prerendered tab's headings do. -->
+                  <!-- The dots name the colors of the sizes, as the headings of a URL in Pages do. -->
                   <template v-if="row.split && (row.delta || row.addedDelta)">
                     <p class="text-xs whitespace-normal text-muted">
                       <span class="me-1.5 inline-block size-2 rounded-xs bg-primary" /><span><span :class="deltaClass(row.routeDelta)">{{ formatDelta(row.routeDelta) }}</span> from its route</span>

@@ -196,7 +196,7 @@ describe('renderComment', () => {
     }))
     expect(urlLines(markdown)).toEqual([])
     expect(markdown).toContain('No prerendered URL\'s initial load or HTML changes by 100 B or more.')
-    // A base built without `--prerender` would list every URL as added.
+    // A base built without `--urls` would list every URL as added.
     const noBase = renderComment(run({}), prerender(run({}), {
       '/a': [1000, 1000],
     }))

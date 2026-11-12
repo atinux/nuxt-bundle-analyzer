@@ -46,7 +46,7 @@ export interface NuxtAnalyzeData {
   version: 1
   routes: AnalyzeRoute[]
   chunks: Record<string, AnalyzeChunk>
-  /** Pages prerendered with `--prerender`, when there are any. */
+  /** The URLs rendered with `--urls`, when there are any. */
   prerendered?: AnalyzePrerenderedPage[]
 }
 

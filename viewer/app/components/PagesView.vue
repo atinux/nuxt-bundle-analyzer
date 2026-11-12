@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { ChunkInfo, Metric, PageInfo, PrerenderedInfo, Target } from '~/utils/data'
-import { chunkKindLabels, formatBytes, formatDelta, pagesDir } from '~/utils/data'
+import { chunkKindLabels, formatBytes, pagesDir } from '~/utils/data'
 
 const props = defineProps<{
   pages: PageInfo[]
   chunks: ChunkInfo[]
-  /** The prerendered URLs, each listed under the page of its route. */
+  /** The URLs rendered with `--urls`, each listed under the page of its route. */
   prerendered: PrerenderedInfo[]
   metric: Metric
   search: string
@@ -14,8 +14,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   inspect: [target: Target]
   openChunk: [file: string]
-  openUrl: [url: string]
-  openPageUrls: [file: string]
 }>()
 
 const expanded = ref(new Set<string>())
@@ -25,30 +23,33 @@ function toggle(file: string) {
     : expanded.value.add(file)
 }
 
-const shown = computed(() => {
-  const query = props.search.trim().toLowerCase()
-  return query
-    ? props.pages.filter(page => [
-        page.file,
-        ...page.routes,
-        ...page.chunk.contents.map(part => part.id),
-      ].some(text => text.toLowerCase().includes(query)))
-    : props.pages
+const urlsByPage = computed(() => new Map(props.pages.map(page => [
+  page.file,
+  // Under the page that renders its route only, not also under the parents of that page.
+  props.prerendered.filter(url => url.page?.file === page.chunk.file),
+])))
+/** URLs whose HTML loads none of the pages, such as an SPA shell. */
+const otherUrls = computed(() => {
+  const pageChunks = new Set(props.pages.map(page => page.chunk.file))
+  return props.prerendered.filter(url => !url.page || !pageChunks.has(url.page.file))
 })
+
+const query = computed(() => props.search.trim().toLowerCase())
+const shown = computed(() => query.value
+  ? props.pages.filter(page => [
+      page.file,
+      ...page.routes,
+      ...page.chunk.contents.map(part => part.id),
+      ...urlsByPage.value.get(page.file)!.map(url => url.url),
+    ].some(text => text.toLowerCase().includes(query.value)))
+  : props.pages)
+const shownOtherUrls = computed(() => query.value
+  ? otherUrls.value.filter(url => url.url.toLowerCase().includes(query.value))
+  : otherUrls.value)
 
 const everyPage = computed(() => props.chunks.filter(chunk => chunk.loadedBy === 'all'))
 const everyPageSize = computed(() => everyPage.value.reduce((sum, chunk) => sum + chunk[props.metric] + chunk.css[props.metric], 0))
 const largest = computed(() => Math.max(1, ...props.pages.map(page => page.initial?.[props.metric] ?? 0)))
-
-const urlsByPage = computed(() => new Map(props.pages.map(page => [
-  page.file,
-  // Under the page that renders its route only, not also under the parents of that page.
-  props.prerendered
-    .filter(url => url.page?.file === page.chunk.file)
-    .sort((a, b) => b.initial[props.metric] - a.initial[props.metric]),
-])))
-/** A page can render thousands of URLs, such as blog posts, so it lists its largest and leaves the rest to Prerendered. */
-const URL_LIMIT = 5
 
 function chunkName(chunk: ChunkInfo) {
   return chunk.file.split('/').pop()
@@ -102,7 +103,7 @@ function chunkName(chunk: ChunkInfo) {
               <template v-else>
                 Parent of <span class="font-mono">{{ page.routes.join(', ') }}</span>
               </template>
-              <span v-if="urlsByPage.get(page.file)?.length" class="text-primary"> · {{ urlsByPage.get(page.file)!.length === 1 ? '1 prerendered URL' : `${urlsByPage.get(page.file)!.length} prerendered URLs` }}</span>
+              <span v-if="urlsByPage.get(page.file)!.length" class="text-primary"> · {{ urlsByPage.get(page.file)!.length === 1 ? '1 prerendered URL' : `${urlsByPage.get(page.file)!.length} prerendered URLs` }}</span>
             </p>
           </div>
           <div class="hidden w-28 shrink-0 text-right sm:block">
@@ -157,30 +158,14 @@ function chunkName(chunk: ChunkInfo) {
             </ul>
           </section>
 
-          <section v-if="urlsByPage.get(page.file)?.length">
+          <section v-if="urlsByPage.get(page.file)!.length">
             <h4 class="text-sm text-highlighted">
               Prerendered URLs
             </h4>
             <p class="mt-1 mb-2 text-xs text-muted">
-              What each URL's HTML preloads: {{ page.initial ? `this route's ${formatBytes(page.initial[metric])}` : 'its route' }}, plus the lazy-loaded components the page rendered, minus any route files the HTML doesn't load, such as stylesheets Nuxt inlines. Open one to see its files in Prerendered.
+              What each URL's HTML preloads: {{ page.initial ? `this route's ${formatBytes(page.initial[metric])}` : 'its route' }}, plus the lazy-loaded components the page rendered, minus any route files the HTML doesn't load, such as stylesheets Nuxt inlines.
             </p>
-            <ul class="space-y-1">
-              <li v-for="url in urlsByPage.get(page.file)!.slice(0, URL_LIMIT)" :key="url.url">
-                <button class="group flex w-full items-baseline gap-3 text-left text-sm hover:text-primary" @click="emit('openUrl', url.url)">
-                  <span class="min-w-0 flex-1 truncate font-mono text-xs">{{ url.url }}</span>
-                  <span class="hidden shrink-0 text-xs text-muted sm:inline">HTML {{ formatBytes(url.html[metric]) }}</span>
-                  <span class="hidden w-36 shrink-0 text-right text-xs text-muted sm:inline">{{ url.added.length ? `${formatDelta(url.addedSize[metric])} in ${url.added.length === 1 ? '1 chunk' : `${url.added.length} chunks`}` : 'Nothing added' }}</span>
-                  <span class="shrink-0 text-highlighted group-hover:text-primary">{{ formatBytes(url.initial[metric]) }}</span>
-                  <UIcon name="i-lucide-arrow-right" class="size-3.5 shrink-0 self-center text-muted group-hover:text-primary" />
-                </button>
-              </li>
-              <li v-if="urlsByPage.get(page.file)!.length > URL_LIMIT">
-                <button class="flex items-center gap-1 text-sm text-muted hover:text-primary" @click="emit('openPageUrls', page.file)">
-                  And {{ urlsByPage.get(page.file)!.length - URL_LIMIT === 1 ? '1 more URL' : `${urlsByPage.get(page.file)!.length - URL_LIMIT} more URLs` }} in Prerendered
-                  <UIcon name="i-lucide-arrow-right" class="size-3.5" />
-                </button>
-              </li>
-            </ul>
+            <PrerenderedUrls :urls="urlsByPage.get(page.file)!" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
           </section>
         </div>
       </li>
@@ -189,4 +174,28 @@ function chunkName(chunk: ChunkInfo) {
       </li>
     </ul>
   </div>
+
+  <section v-if="shownOtherUrls.length" class="rounded-lg px-4 py-3 ring ring-default">
+    <h4 class="text-sm text-highlighted">
+      URLs Not Matched to a Page
+    </h4>
+    <p class="mt-1 mb-2 text-xs text-muted">
+      Their HTML loads no page's chunk, such as an SPA shell or a page outside the app's routes.
+    </p>
+    <PrerenderedUrls :urls="shownOtherUrls" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+  </section>
+
+  <!-- Routes only count what their static imports reach, so the callout says how to measure what a rendered page loads. -->
+  <UAlert
+    v-if="!prerendered.length"
+    icon="i-lucide-server"
+    color="neutral"
+    variant="subtle"
+    title="Measure what a page loads when it's rendered"
+  >
+    <template #description>
+      A page's initial load counts what its route imports statically, not the lazy components it renders on the server. Pass the URLs to render, and each page here lists them with their HTML size and the chunks their HTML preloads:
+      <code class="mt-2 block font-mono text-xs text-highlighted">npx nuxt-bundle-analyzer --urls=/,/blog/hello-world</code>
+    </template>
+  </UAlert>
 </template>

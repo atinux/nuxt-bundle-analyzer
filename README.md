@@ -60,35 +60,17 @@ Compare shows the size difference for each route, package, and file.
 
 A route's initial load follows its static imports and stops at every dynamic `import()`. It doesn't count the lazy-loaded components a page renders, such as the prose components of a page rendered from Markdown, although the page's HTML preloads them. All the pages of a docs site often share one route, so they all show the same initial load.
 
-With `--prerender`, the app's own prerender config runs, and the analyzer records every HTML page Nitro prerenders: its URL, the size of its HTML, and the JavaScript and CSS the HTML preloads. For an app that prerenders every page, that takes as long as `nuxt generate`. To measure a few URLs, list them in a layer:
-
-```ts
-// bundle-prerender/nuxt.config.ts
-const urls = ['/en', '/en/getting-started/installation', '/en/essentials/components']
-
-export default defineNuxtConfig({
-  nitro: {
-    prerender: {
-      routes: urls,
-      ignore: [
-        (path: string) => !urls.includes(path)
-      ],
-    },
-  },
-})
-```
-
-Then pass it with `--extends`:
+Pass `--urls` with the URLs to measure:
 
 ```bash
-npx nuxt-bundle-analyzer --prerender --extends ./bundle-prerender
+npx nuxt-bundle-analyzer --urls=/en,/en/getting-started/installation,/en/essentials/components
 ```
 
-The `ignore` function keeps the run to those URLs, even when the app crawls links or a module adds routes. The build logs how many pages it recorded, such as `Recorded 3 prerendered pages`. When the count is off, check the layer's path: Nuxt only warns when it can't find a layer.
+The analysis build renders only those URLs, and records the size of each URL's HTML and the JavaScript and CSS the HTML preloads. The app's own prerender routes, the links they lead to, and routes that modules add aren't rendered. The build logs how many URLs it recorded, such as `Recorded 3 prerendered pages`. A URL must match the path Nitro renders, so `/about` and `/about/` are different URLs.
 
 This works for SSR apps too. An SSR response has the same HTML tags as the prerendered file, so prerendering a URL in the analysis build shows what an SSR visit preloads. Pages that depend on the request, such as on cookies, auth or live data, are measured as they render at build time.
 
-The **Prerendered** tab lists each URL with its HTML and its initial load, split into what comes from its route and what the page added: the lazy-loaded components it rendered. Each page in **Pages** lists the URLs of its routes, and **Compare** and the pull request comment show how each URL changed, split the same way.
+Each page in **Pages** lists its URLs with their HTML and initial load, split into what comes from its route and what the page added: the lazy-loaded components it rendered. **Compare** and the pull request comment show how each URL changed, split the same way.
 
 The initial load of a URL counts its HTML's module scripts, `modulepreload` links and stylesheets. It leaves out what the HTML only prefetches and the payload preload.
 
@@ -110,7 +92,7 @@ Set `NUXT_BUNDLE_ANALYZER_NAME` to name these runs, or `bundleAnalyzer.name` in 
 | --- | --- |
 | `--name <name>` | Name of the run, so you can keep several and compare them. Defaults to `default`. |
 | `--no-serve` | Write the reports without opening the analyzer. |
-| `--prerender` | Prerender routes while analyzing, and record what each page's HTML preloads. See [Prerendered URLs](#prerendered-urls). |
+| `--urls <urls>` | Render these URLs, comma-separated, and record what each one's HTML preloads. See [Prerendered URLs](#prerendered-urls). |
 | `--extends <layer>` | Extend the app with a layer, as with `nuxi`. |
 | `serve` | Open the analyzer on the runs you already have, without building. |
 | `PORT` | Port of the analyzer. Defaults to `3000`. |

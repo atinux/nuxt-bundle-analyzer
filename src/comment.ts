@@ -257,7 +257,7 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
   const before = prerenderedSizes(base)
   const after = prerenderedSizes(current)
   const urls = [
-    // A base built without `--prerender` has no URLs to compare with, so every URL would read as added.
+    // A base built without `--urls` has no URLs to compare with, so every URL would read as added.
     ...new Set(base.prerendered.length === 0
       ? []
       : [
@@ -284,7 +284,7 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
   }
   else if (current.prerendered.length > 0) {
     lines.push('', base.prerendered.length === 0
-      ? 'The base run has no prerendered URLs to compare with: build it with <code>--prerender</code> too.'
+      ? 'The base run has no prerendered URLs to compare with: build it with the same <code>--urls</code> too.'
       : `No prerendered URL's initial load or HTML changes by ${formatBytes(MIN_CHANGE)} or more.`)
   }
 

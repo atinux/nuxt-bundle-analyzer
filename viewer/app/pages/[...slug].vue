@@ -3,7 +3,7 @@ import type { SelectItem, TabsItem } from '@nuxt/ui'
 import type { Env, Metric, Run, RunData, Target } from '~/utils/data'
 import { clientChunks, fetchRun, fetchRuns, hostedBranch, hostedPull, isDuplicated, pages, prerenderedPages, serverChunks } from '~/utils/data'
 
-type View = 'history' | 'pages' | 'chunks' | 'issues' | 'prerendered' | 'compare'
+type View = 'history' | 'pages' | 'chunks' | 'issues' | 'compare'
 
 /** The pull request the hosted viewer shows, when it is opened from one. */
 const pull = hostedPull()
@@ -17,16 +17,9 @@ const VIEWS: View[] = branch
       'pages',
       'chunks',
       'issues',
-      'prerendered',
       'compare',
     ]
-  : [
-      'pages',
-      'chunks',
-      'issues',
-      'prerendered',
-      'compare',
-    ]
+  : ['pages', 'chunks', 'issues', 'compare']
 const DEFAULT_VIEW = VIEWS[0]!
 
 const route = useRoute()
@@ -236,9 +229,8 @@ function compareCommit(sha: string) {
   })
 }
 
-/** Pages and prerendered URLs are about the client build, which Nitro has no equivalent of. */
-const clientOnly = computed(() => state.view === 'pages' || state.view === 'prerendered')
-const env = computed<Env>(() => clientOnly.value
+/** Pages are about the client build, which Nitro has no equivalent of. */
+const env = computed<Env>(() => state.view === 'pages'
   ? 'client'
   : state.env)
 function chunksOf(run: RunData | undefined, of: Env) {
@@ -253,7 +245,7 @@ const clientChunkList = computed(() => chunksOf(data.value, 'client'))
 const pageList = computed(() => data.value
   ? pages(data.value, clientChunkList.value)
   : [])
-// Checked first, so a run without prerendered pages doesn't derive the client chunks for the tabs.
+// Checked first, so a run without prerendered pages doesn't derive them.
 const prerenderedList = computed(() => data.value?.prerendered.length
   ? prerenderedPages(data.value, clientChunkList.value)
   : [])
@@ -270,26 +262,6 @@ async function openChunk(file: string) {
   focusedChunk.value = undefined
   await nextTick()
   focusedChunk.value = file
-}
-
-const focusedUrl = ref<string>()
-async function openUrl(url: string) {
-  // The Pages search can match a page by files the Prerendered search doesn't look at, which would hide the URL.
-  Object.assign(state, {
-    view: 'prerendered',
-    search: '',
-  })
-  // Cleared first, so opening the same URL again still scrolls to it.
-  focusedUrl.value = undefined
-  await nextTick()
-  focusedUrl.value = url
-}
-/** Prerendered with only the URLs of a page, found by the page's file. */
-function openPageUrls(file: string) {
-  Object.assign(state, {
-    view: 'prerendered',
-    search: file,
-  })
 }
 
 const inspected = computed<Target | undefined>(() => state.package
@@ -336,12 +308,6 @@ const viewItems = computed<TabsItem[]>(() => [
   { label: 'Pages', value: 'pages' },
   { label: 'Chunks', value: 'chunks' },
   { label: 'Issues', value: 'issues', badge: issueCount.value || undefined },
-  // Like History, only there when there is something to show.
-  ...prerenderedList.value.length
-    ? [
-        { label: 'Prerendered', value: 'prerendered' },
-      ]
-    : [],
   { label: 'Compare', value: 'compare' },
 ])
 /** Whether there is a build to show: in the run, or in History, in any commit. */
@@ -431,11 +397,11 @@ const metricItems: TabsItem[] = [
                 </template>
                 <!-- History shows every commit, so it has no run to pick. -->
                 <USelect v-if="state.view !== 'history'" v-model="state.run" :items="runItems" size="sm" class="w-28 sm:w-40" aria-label="Run" />
-                <UTabs v-if="!clientOnly" v-model="state.env" :items="envItems" :content="false" size="xs" />
+                <UTabs v-if="state.view !== 'pages'" v-model="state.env" :items="envItems" :content="false" size="xs" />
                 <UTabs v-model="state.metric" :items="metricItems" :content="false" size="xs" aria-label="Size" />
               </template>
               <template #right>
-                <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'prerendered' ? 'Search URLs, routes and files…' : state.view === 'issues' ? 'Search packages and files…' : state.view === 'compare' ? 'Search routes or files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
+                <UInput v-model="state.search" icon="i-lucide-search" :placeholder="state.view === 'history' ? 'Search commits…' : state.view === 'pages' ? 'Search pages and files…' : state.view === 'issues' ? 'Search packages and files…' : state.view === 'compare' ? 'Search routes or files…' : 'Search files…'" size="sm" class="w-full sm:w-56" :ui="{ base: 'pointer-coarse:text-base' }" aria-label="Search" />
               </template>
             </UDashboardToolbar>
           </div>
@@ -503,8 +469,6 @@ const metricItems: TabsItem[] = [
             :search="state.search"
             @inspect="inspect"
             @open-chunk="openChunk"
-            @open-url="openUrl"
-            @open-page-urls="openPageUrls"
           />
 
           <ChunksView
@@ -529,21 +493,6 @@ const metricItems: TabsItem[] = [
             icon="i-lucide-file-x"
             :title="env === 'client' ? 'No Client Build to Show' : 'No Nitro Build to Show'"
             description="This run has no report of this build. Run nuxt analyze again to create it."
-          />
-
-          <PrerenderedView
-            v-else-if="state.view === 'prerendered' && prerenderedList.length"
-            :pages="prerenderedList"
-            :metric="state.metric"
-            :search="state.search"
-            :focus="focusedUrl"
-            @open-chunk="openChunk"
-          />
-          <UEmpty
-            v-else-if="state.view === 'prerendered' && data"
-            icon="i-lucide-file-x"
-            title="No Prerendered URLs in This Run"
-            description="Run nuxt-bundle-analyzer again with --prerender to record what the HTML of each prerendered page preloads."
           />
 
           <template v-else-if="state.view === 'compare'">

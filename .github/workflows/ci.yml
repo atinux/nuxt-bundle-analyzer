@@ -58,11 +58,11 @@ jobs:
           for file in client.json nitro.json nuxt.json meta.json; do
             test -s "node_modules/.cache/nuxt-bundle-analyzer/ci/$file" || { echo "::error::The run has no $file."; exit 1; }
           done
-          node -e "const data = require('./node_modules/.cache/nuxt-bundle-analyzer/ci/nuxt.json'); if (!data.routes.length) { console.error('::error::nuxt.json lists no routes.'); process.exit(1) } if (data.prerendered) { console.error('::error::nuxt.json lists prerendered pages without --prerender.'); process.exit(1) }"
-      # The layer prerenders /chart and /stats only, which `--prerender` records.
-      - name: Analyze the playground with prerendering
+          node -e "const data = require('./node_modules/.cache/nuxt-bundle-analyzer/ci/nuxt.json'); if (!data.routes.length) { console.error('::error::nuxt.json lists no routes.'); process.exit(1) } if (data.prerendered) { console.error('::error::nuxt.json lists prerendered pages without --urls.'); process.exit(1) }"
+      # Renders only /chart and /stats, which `--urls` records.
+      - name: Analyze the playground with URLs
         working-directory: playground
-        run: node ../dist/cli.mjs --name=prerender --no-serve --prerender --extends ./prerender-layer
+        run: node ../dist/cli.mjs --name=prerender --no-serve --urls=/chart,/stats
       # /chart renders the lazy HeavyChart on the server, so its HTML preloads the chunk its route's static imports don't reach.
       - name: Check the prerendered pages
         working-directory: playground

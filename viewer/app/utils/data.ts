@@ -95,7 +95,7 @@ export interface Route {
   entries: string[]
 }
 
-/** An HTML page prerendered with `--prerender`, with the client files its HTML preloads. */
+/** An HTML page rendered with `--urls`, with the client files its HTML preloads. */
 export interface PrerenderedPage {
   url: string
   /** The HTML document. */
