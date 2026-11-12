@@ -73,7 +73,6 @@ function pageSize(page: PageInfo) {
   <div class="rounded-lg ring ring-default">
     <!-- Every page loads these before it renders, so they are listed once rather than in each page's size. -->
     <div class="flex items-center gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs text-muted" aria-hidden="true">
-      <span class="w-4 shrink-0" />
       <span class="flex-1">Loaded on Every Page</span>
       <span class="w-32 shrink-0 text-right">Size</span>
     </div>
@@ -89,14 +88,13 @@ function pageSize(page: PageInfo) {
       </p>
     </button>
     <div v-if="expanded.has(EVERY_PAGE)" class="border-t border-default px-4 py-4 sm:ps-12">
-      <ChunkList :chunks="everyPage" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+      <ChunkList :chunks="everyPage" :metric="metric" expandable @open-chunk="file => emit('openChunk', file)" @inspect="target => emit('inspect', target)" />
     </div>
   </div>
 
   <div class="rounded-lg ring ring-default">
     <!-- The columns are named once here rather than on every row. -->
     <div class="flex items-center gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs text-muted" aria-hidden="true">
-      <span class="w-4 shrink-0" />
       <span class="flex-1">{{ pages.length === 1 ? '1 Page' : `${pages.length} Pages` }}</span>
       <span class="w-32 shrink-0 text-right">Size</span>
     </div>
