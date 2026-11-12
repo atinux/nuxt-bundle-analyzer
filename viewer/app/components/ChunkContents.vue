@@ -11,8 +11,6 @@ const emit = defineEmits<{
   inspect: [target: Target]
 }>()
 
-const total = computed(() => props.parts.reduce((sum, part) => sum + part[props.metric], 0) || 1)
-
 // The project's files keep the order of its directories, so they read like its structure.
 const files = computed(() => props.parts
   .filter(part => sourceKind(part) === 'component' || sourceKind(part) === 'file')
@@ -36,8 +34,6 @@ const dependencies = computed(() => {
 const generated = computed(() => props.parts
   .filter(part => sourceKind(part) === 'nuxt')
   .reduce((sum, part) => sum + part[props.metric], 0))
-
-const share = (size: number) => `${Math.max(1, Math.round(size / total.value * 100))}%`
 </script>
 
 <template>
@@ -46,7 +42,7 @@ const share = (size: number) => `${Math.max(1, Math.round(size / total.value * 1
       <h4 class="mb-2 text-sm text-highlighted">
         Your Files
       </h4>
-      <ul v-if="files.length" class="space-y-1.5">
+      <ul v-if="files.length" class="space-y-1">
         <li v-for="part in files" :key="part.id">
           <div class="flex items-center justify-between gap-3 text-sm">
             <button class="flex min-w-0 items-center gap-1.5 text-left font-mono text-xs hover:text-primary hover:underline" :title="`Show details of ${part.id}`" @click="emit('inspect', { kind: 'file', id: part.id })">
@@ -59,9 +55,6 @@ const share = (size: number) => `${Math.max(1, Math.round(size / total.value * 1
             </button>
             <span class="shrink-0 text-muted">{{ formatBytes(part[metric]) }}</span>
           </div>
-          <div class="mt-1 h-1 rounded-full bg-elevated">
-            <div class="h-1 rounded-full bg-primary" :style="{ width: share(part[metric]) }" />
-          </div>
         </li>
       </ul>
       <p v-else class="text-sm text-muted">
@@ -73,7 +66,7 @@ const share = (size: number) => `${Math.max(1, Math.round(size / total.value * 1
       <h4 class="mb-2 text-sm text-highlighted">
         Dependencies
       </h4>
-      <ul v-if="dependencies.length || generated" class="space-y-1.5">
+      <ul v-if="dependencies.length || generated" class="space-y-1">
         <li v-for="dependency in dependencies" :key="dependency.name">
           <div class="flex items-center justify-between gap-3 text-sm">
             <button class="flex min-w-0 items-center gap-1.5 text-left font-mono text-xs hover:text-primary hover:underline" :title="`Show details of ${dependency.name}`" @click="emit('inspect', { kind: 'package', id: dependency.name })">
@@ -83,9 +76,6 @@ const share = (size: number) => `${Math.max(1, Math.round(size / total.value * 1
             <span class="shrink-0 text-muted">
               <span v-if="dependency.files > 1">{{ dependency.files }} files · </span>{{ formatBytes(dependency.size) }}
             </span>
-          </div>
-          <div class="mt-1 h-1 rounded-full bg-elevated">
-            <div class="h-1 rounded-full bg-inverted/60" :style="{ width: share(dependency.size) }" />
           </div>
         </li>
         <li v-if="generated" class="flex items-baseline justify-between gap-3 pt-1 text-sm text-muted">
