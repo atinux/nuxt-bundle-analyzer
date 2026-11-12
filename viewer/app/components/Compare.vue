@@ -160,7 +160,8 @@ function isNotable(row: Row) {
 /** The URLs whose initial load or HTML changed and the search keeps. */
 const urls = computed(() => {
   const query = props.search.trim().toLowerCase()
-  return allUrls.value.filter(row => (isNotable(row) || Math.abs(row.html) >= MIN_CHANGE) && (!query || row.key.toLowerCase().includes(query)))
+  // A route part and a rendered part that cancel out, such as a component going from lazy to static, still count.
+  return allUrls.value.filter(row => (isNotable(row) || Math.abs(row.addedDelta) >= MIN_CHANGE || Math.abs(row.html) >= MIN_CHANGE) && (!query || row.key.toLowerCase().includes(query)))
 })
 
 /** The routes that changed and the search keeps: its path, or the page file that renders it. */
@@ -503,7 +504,7 @@ function percent(delta: number, base: number) {
                 <template v-else>
                   <span :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
                   <!-- The dots name the colors of the sizes, as the Prerendered tab's headings do. -->
-                  <template v-if="row.split && row.delta">
+                  <template v-if="row.split && (row.delta || row.addedDelta)">
                     <p class="text-xs whitespace-normal text-muted">
                       <span class="me-1.5 inline-block size-2 rounded-xs bg-primary" /><span><span :class="deltaClass(row.routeDelta)">{{ formatDelta(row.routeDelta) }}</span> from its route</span>
                     </p>

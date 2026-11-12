@@ -182,6 +182,10 @@ describe('renderComment', () => {
     expect(urlLines(renderComment(docs(10_000, 2000), docs(10_300, 2500)))).toEqual([
       '| <code>/docs/intro</code> | 12.8 kB<br><sub>2.50 kB from components</sub> | +800 B (+6.7%)<br><sub>route +300 B, components +500 B</sub> | 1.00 kB | ±0 B |',
     ])
+    // A component going from lazy to static moves bytes from the components to the route, with the same total.
+    expect(urlLines(renderComment(docs(10_000, 2000), docs(10_500, 1500)))).toEqual([
+      '| <code>/docs/intro</code> | 12.0 kB<br><sub>1.50 kB from components</sub> | ±0 B<br><sub>route +500 B, components −500 B</sub> | 1.00 kB | ±0 B |',
+    ])
   })
 
   it('says no prerendered URL changed when every change is under 100 B or the base has none, and leaves the table out without any', () => {

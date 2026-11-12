@@ -179,9 +179,9 @@ function initialCell(initial: Row, added: Row) {
     : sizeCell(initial.current)
 }
 
-/** A URL's difference, split between its route and the components when it changed and the page rendered any. */
+/** A URL's difference, split between its route and the components when either changed and the page rendered any. */
 function initialDeltaCell(initial: Row, added: Row) {
-  if (initial.base === undefined || initial.current === undefined || initial.delta === 0 || !(added.base || added.current)) {
+  if (initial.base === undefined || initial.current === undefined || (initial.delta === 0 && added.delta === 0) || !(added.base || added.current)) {
     return deltaCell(initial)
   }
   return `${deltaCell(initial)}<br><sub>route ${formatDelta(initial.delta - added.delta)}, components ${formatDelta(added.delta)}</sub>`
@@ -270,7 +270,8 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
       added: toRow(url, before.added.get(url), after.added.get(url)),
       html: toRow(url, before.html.get(url), after.html.get(url)),
     }))
-    .filter(({ initial, html }) => Math.abs(initial.delta) >= MIN_CHANGE || Math.abs(html.delta) >= MIN_CHANGE || initial.base === undefined || initial.current === undefined)
+    // A route part and a rendered part that cancel out, such as a component going from lazy to static, still count.
+    .filter(({ initial, added, html }) => Math.abs(initial.delta) >= MIN_CHANGE || Math.abs(added.delta) >= MIN_CHANGE || Math.abs(html.delta) >= MIN_CHANGE || initial.base === undefined || initial.current === undefined)
     .sort((a, b) => Math.abs(b.initial.delta) - Math.abs(a.initial.delta) || Math.abs(b.html.delta) - Math.abs(a.html.delta) || a.initial.key.localeCompare(b.initial.key))
   if (urls.length > 0) {
     lines.push(
