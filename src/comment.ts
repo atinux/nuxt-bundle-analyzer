@@ -3,13 +3,11 @@ import type { Env, NuxtData, Run, RunData, SondaReport } from '../viewer/app/uti
 import { promises as fsp } from 'node:fs'
 import { join } from 'pathe'
 
-import { clientChunks, formatBytes, formatDelta, prerenderedPages, routeSize, toRunData } from '../viewer/app/utils/data'
+import { clientChunks, formatBytes, formatDelta, MIN_CHANGE, prerenderedPages, routeSize, toRunData } from '../viewer/app/utils/data'
 
 /** Runs come from builds of a pull request's code, so a file this large is refused rather than parsed. */
 const MAX_FILE_SIZE = 64 * 1024 * 1024
 const MAX_ROWS = 10
-/** Two builds of the same code differ by a few bytes, such as the build ID, so smaller changes are left out. */
-const MIN_CHANGE = 100
 const MAX_NAME_LENGTH = 200
 /** Where the comment starts, so a workflow can find it again to update it. */
 export const COMMENT_MARKER = '<!-- nuxt-bundle-analyzer -->'

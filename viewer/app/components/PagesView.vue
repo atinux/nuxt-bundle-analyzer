@@ -115,9 +115,6 @@ function chunkName(chunk: ChunkInfo) {
               <p class="text-sm text-highlighted">
                 <span class="sr-only">Initial load </span>{{ formatBytes(page.initial[metric]) }}
               </p>
-              <div class="mt-1 h-1 rounded-full bg-elevated">
-                <div class="ms-auto h-1 rounded-full bg-primary" :style="{ width: `${Math.round(page.initial[metric] / largest * 100)}%` }" />
-              </div>
             </template>
             <p v-else class="text-sm text-muted">
               In its child routes

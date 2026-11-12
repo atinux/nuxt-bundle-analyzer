@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { TabsItem } from '@nuxt/ui'
 import type { ChunkInfo, Env, Metric, RunData, Source, Target } from '~/utils/data'
-import { clientChunks, formatBytes, formatDelta, locationChanges, pageChanges, pages, pagesDir, prerenderedPages, routeChanges, routeSize, serverChunks } from '~/utils/data'
+import { clientChunks, formatBytes, formatDelta, locationChanges, MIN_CHANGE, pageChanges, pages, pagesDir, prerenderedPages, routeChanges, routeSize, serverChunks } from '~/utils/data'
 
 const props = defineProps<{
   base: RunData
@@ -153,16 +153,20 @@ const allUrls = computed(() => {
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || Math.abs(b.html) - Math.abs(a.html))
 })
 const sides = ['base', 'current'] as const
+/** Added, removed, or changed by {@link MIN_CHANGE} or more, as the pull request comment counts it. */
+function isNotable(row: Row) {
+  return row.status === 'added' || row.status === 'removed' || Math.abs(row.delta) >= MIN_CHANGE
+}
 /** The URLs whose initial load or HTML changed and the search keeps. */
 const urls = computed(() => {
   const query = props.search.trim().toLowerCase()
-  return allUrls.value.filter(row => (row.status !== 'same' || row.html !== 0) && (!query || row.key.toLowerCase().includes(query)))
+  return allUrls.value.filter(row => (isNotable(row) || Math.abs(row.html) >= MIN_CHANGE) && (!query || row.key.toLowerCase().includes(query)))
 })
 
 /** The routes that changed and the search keeps: its path, or the page file that renders it. */
 const routes = computed(() => {
   const query = props.search.trim().toLowerCase()
-  return allRoutes.value.filter(row => row.status !== 'same' && (!query || [row.key, row.page].some(text => text?.toLowerCase().includes(query))))
+  return allRoutes.value.filter(row => isNotable(row) && (!query || [row.key, row.page].some(text => text?.toLowerCase().includes(query))))
 })
 
 /** Every file or package that changed and the search keeps, the largest difference first. */
@@ -340,7 +344,7 @@ function percent(delta: number, base: number) {
         Initial Load per Route
       </h3>
       <p class="text-sm text-muted">
-        JavaScript and CSS loaded before each route renders, for the routes that changed.
+        JavaScript and CSS loaded before each route renders, for the routes that changed by {{ formatBytes(MIN_CHANGE) }} or more.
       </p>
     </template>
     <!-- Phones keep the difference and leave both sizes to the details; anything wider still scrolls sideways. -->
@@ -439,7 +443,7 @@ function percent(delta: number, base: number) {
         Initial Load per Prerendered URL
       </h3>
       <p class="text-sm text-muted">
-        JavaScript and CSS each URL's prerendered HTML preloads, and the difference of the HTML itself, for the URLs that changed.
+        JavaScript and CSS each URL's prerendered HTML preloads, and the difference of the HTML itself, for the URLs whose initial load or HTML changed by {{ formatBytes(MIN_CHANGE) }} or more.
       </p>
     </template>
     <div class="overflow-x-auto">

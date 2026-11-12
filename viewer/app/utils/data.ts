@@ -993,6 +993,9 @@ export function locationChanges(base: RunData, current: RunData, env: Env, targe
   return changes(measure(base), measure(current))
 }
 
+/** Two builds of the same code differ by a few bytes, such as the build ID, so smaller changes of a route or a URL are left out. */
+export const MIN_CHANGE = 100
+
 export function formatBytes(bytes: number): string {
   const abs = Math.abs(bytes)
   if (abs < 1000) {
