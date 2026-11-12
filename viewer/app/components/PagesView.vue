@@ -48,6 +48,18 @@ const shownOtherUrls = computed(() => query.value
   : otherUrls.value)
 
 const everyPage = computed(() => props.chunks.filter(chunk => chunk.loadedBy === 'all'))
+/** The app's entry, which leads the label of the chunks every page loads. */
+const entryName = computed(() => {
+  const entry = everyPage.value.find(chunk => chunk.kind === 'entry')
+  return entry && chunkName(entry)
+})
+/** The rest of the chunks every page loads, after the entry. */
+const everyPageOthers = computed(() => {
+  const count = everyPage.value.length - (entryName.value ? 1 : 0)
+  return `${count} ${entryName.value ? 'other ' : ''}${count === 1
+    ? 'chunk'
+    : 'chunks'} every page loads`
+})
 const everyPageSize = computed(() => everyPage.value.reduce((sum, chunk) => sum + chunk[props.metric] + chunk.css[props.metric], 0))
 const largest = computed(() => Math.max(1, ...props.pages.map(page => page.initial?.[props.metric] ?? 0)))
 
@@ -147,8 +159,7 @@ function chunkName(chunk: ChunkInfo) {
               <li v-if="page.initial">
                 <div class="flex items-baseline justify-between gap-3 text-sm">
                   <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', everyPage[0]?.file ?? '')">
-                    <UBadge :label="chunkKindLabels.entry" color="neutral" variant="subtle" size="sm" />
-                    <span class="truncate text-xs">Loaded on every page, {{ everyPage.length === 1 ? '1 chunk' : `${everyPage.length} chunks` }}</span>
+                    <span class="text-xs"><template v-if="entryName"><span class="font-mono">{{ entryName }}</span> and </template>{{ everyPageOthers }}</span>
                   </button>
                   <span class="shrink-0 text-muted">{{ formatBytes(everyPageSize) }}</span>
                 </div>
