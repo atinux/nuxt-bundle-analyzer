@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ChunkInfo, Metric, PageInfo, PrerenderedInfo, Target } from '~/utils/data'
-import { chunkKindLabels, formatBytes, pagesDir } from '~/utils/data'
+import { formatBytes, pagesDir } from '~/utils/data'
 
 const props = defineProps<{
   pages: PageInfo[]
@@ -56,6 +56,12 @@ function chunkName(chunk: ChunkInfo) {
 }
 // Largest first, so what takes the space comes first.
 const everyPageSorted = computed(() => [...everyPage.value].sort((a, b) => chunkSize(b) - chunkSize(a)))
+/** A large app loads dozens of chunks on every page, so the list starts with its largest. */
+const EVERY_PAGE_LIMIT = 10
+const showAllEveryPage = ref(false)
+const everyPageShown = computed(() => showAllEveryPage.value
+  ? everyPageSorted.value
+  : everyPageSorted.value.slice(0, EVERY_PAGE_LIMIT))
 const everyPageSize = computed(() => everyPage.value.reduce((sum, chunk) => sum + chunk[props.metric] + chunk.css[props.metric], 0))
 
 /** What a page's route loads before it renders, apart from the chunks every page loads, which the table above lists. */
@@ -68,33 +74,24 @@ function pageSize(page: PageInfo) {
   <section class="rounded-lg ring ring-default">
     <!-- Every page loads these before it renders, so they are listed once rather than in each page's size. -->
     <h3 class="flex items-center justify-between gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs text-muted">
-      <span>
+      <span class="flex items-center gap-2">
         Loaded on Every Page
         <!-- One request per chunk. Stylesheets are left out, as Nuxt can inline them in the HTML. -->
-        <span class="text-dimmed"> · {{ everyPage.length === 1 ? '1 JS request' : `${everyPage.length} JS requests` }}</span>
+        <span class="text-dimmed" aria-hidden="true">·</span>
+        <span class="text-dimmed">{{ everyPage.length === 1 ? '1 JS request' : `${everyPage.length} JS requests` }}</span>
       </span>
       <span class="text-sm text-highlighted">{{ formatBytes(everyPageSize) }}</span>
     </h3>
     <ul class="divide-y divide-default">
-      <li v-for="chunk in everyPageSorted" :key="chunk.file">
+      <li v-for="chunk in everyPageShown" :key="chunk.file">
         <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(chunk.file)" @click="toggle(chunk.file)">
           <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(chunk.file) }" />
           <div class="min-w-0 flex-1">
-            <!-- The icon sits beside both lines, centered on them, as on the pages below. -->
-            <div class="flex items-center gap-2">
+            <!-- The file the browser requests. -->
+            <p class="flex items-center gap-2 font-mono text-sm text-highlighted">
               <FileIcon :path="chunk.file" class="size-4" />
-              <div class="min-w-0">
-                <!-- The file the browser requests, with the source it is built from below. -->
-                <p class="truncate font-mono text-sm text-highlighted">
-                  {{ chunkName(chunk) }}
-                </p>
-                <p class="truncate text-xs text-muted">
-                  {{ chunkKindLabels[chunk.kind] }}<template v-if="chunk.src">
-                    · <span class="font-mono">{{ chunk.src }}</span>
-                  </template>
-                </p>
-              </div>
-            </div>
+              <span class="truncate">{{ chunkName(chunk) }}</span>
+            </p>
             <!-- Its share of what every page loads, so what takes the space stands out. -->
             <div class="mt-1.5 ms-6 h-1 rounded-full bg-elevated">
               <div class="h-1 rounded-full bg-primary" :style="{ width: `${Math.max(1, Math.round(chunkSize(chunk) / (everyPageSize || 1) * 100))}%` }" />
@@ -114,6 +111,11 @@ function pageSize(page: PageInfo) {
             </button>
           </div>
         </div>
+      </li>
+      <li v-if="everyPage.length > EVERY_PAGE_LIMIT">
+        <button class="w-full px-4 py-2.5 text-center text-sm text-muted hover:bg-elevated/50 hover:text-primary" @click="showAllEveryPage = !showAllEveryPage">
+          {{ showAllEveryPage ? 'Show the 10 largest' : `Show all ${everyPage.length} files` }}
+        </button>
       </li>
     </ul>
   </section>
