@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TabsItem } from '@nuxt/ui'
 import type { ChunkInfo, Env, Metric, RunData, Source, Target } from '~/utils/data'
 import { clientChunks, formatBytes, formatDelta, locationChanges, pages, pagesDir, routeChanges, routeSize, serverChunks } from '~/utils/data'
 
@@ -104,6 +105,13 @@ const allRoutes = computed<Row[]>(() => {
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
 })
 
+/** The table picked, one at a time so a long list of routes does not push the packages out of reach. */
+const pickedTable = ref<'routes' | 'packages'>('routes')
+/** The table shown, which is always the packages one for Nitro, as it has no routes. */
+const table = computed(() => allRoutes.value.length
+  ? pickedTable.value
+  : 'packages')
+
 /** The routes the search keeps: its path, or the page file that renders it. */
 const routes = computed(() => {
   const query = props.search.trim().toLowerCase()
@@ -112,7 +120,8 @@ const routes = computed(() => {
     : allRoutes.value
 })
 
-const rows = computed<Row[]>(() => {
+/** Every file or package that changed and the search keeps, the largest difference first. */
+const changes = computed<Row[]>(() => {
   const isPackage = groupBy.value === 'package'
   const keyOf = (source: Source) => isPackage && source.package
     ? `node_modules/${source.package}`
@@ -145,8 +154,14 @@ const rows = computed<Row[]>(() => {
     })
     .filter(row => row.status !== 'same' && (!query || row.key.toLowerCase().includes(query)))
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-    .slice(0, 500)
 })
+const rows = computed(() => changes.value.slice(0, 500))
+
+/** The tables to pick, with how many rows the search keeps in each. */
+const tableItems = computed<TabsItem[]>(() => [
+  { label: 'Routes', value: 'routes', badge: routes.value.length },
+  { label: 'Packages', value: 'packages', badge: changes.value.length },
+])
 
 // Rows open to show where their difference comes from.
 const expanded = ref(new Set<string>())
@@ -237,9 +252,16 @@ function percent(delta: number, base: number) {
   </div>
 
   <div class="flex items-center justify-between gap-3">
-    <p class="text-sm text-muted">
+    <UTabs
+      v-if="show === 'tables' && allRoutes.length"
+      v-model="pickedTable"
+      :items="tableItems"
+      :content="false"
+      size="xs"
+    />
+    <p v-else class="text-sm text-muted">
       {{ show === 'tables'
-        ? 'Where the difference is, by route and by package or module.'
+        ? 'Where the difference is, by package or module.'
         : `The chunks of ${current.run.name}, each file or package colored by how it changed since ${base.run.name}. Drag to turn, scroll to zoom.` }}
     </p>
     <UTabs
@@ -261,7 +283,7 @@ function percent(delta: number, base: number) {
     @open-chunk="file => emit('openChunk', file)"
   />
 
-  <UCard v-if="show === 'tables' && allRoutes.length" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+  <UCard v-if="show === 'tables' && table === 'routes'" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
     <template #header>
       <h3 class="text-base text-highlighted">
         Initial Load per Route
@@ -360,7 +382,7 @@ function percent(delta: number, base: number) {
     </div>
   </UCard>
 
-  <UCard v-if="show === 'tables'" :ui="{ header: 'py-3 sm:px-4 flex items-center justify-between gap-2', body: 'p-0 sm:p-0' }">
+  <UCard v-if="show === 'tables' && table === 'packages'" :ui="{ header: 'py-3 sm:px-4 flex items-center justify-between gap-2', body: 'p-0 sm:p-0' }">
     <template #header>
       <h3 class="text-base text-highlighted">
         Changed {{ groupBy === 'package' ? 'Packages and Modules' : 'Modules' }}
