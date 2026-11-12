@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ChunkInfo, Metric, PageInfo, PrerenderedInfo, Target } from '~/utils/data'
-import { formatBytes, pagesDir } from '~/utils/data'
+import { appChunks, formatBytes, pagesDir } from '~/utils/data'
 
 const props = defineProps<{
   pages: PageInfo[]
@@ -47,7 +47,8 @@ const shownOtherUrls = computed(() => query.value
   ? otherUrls.value.filter(url => url.url.toLowerCase().includes(query.value))
   : otherUrls.value)
 
-const everyPage = computed(() => props.chunks.filter(chunk => chunk.loadedBy === 'all'))
+const everyPage = computed(() => appChunks(props.chunks))
+const everyPageFiles = computed(() => new Set(everyPage.value.map(chunk => chunk.file)))
 function chunkSize(chunk: ChunkInfo) {
   return chunk[props.metric] + chunk.css[props.metric]
 }
@@ -83,7 +84,7 @@ function plural(count: number, noun: string) {
 }
 /** Who imports the chunk, by when they load, such as `46 loaded on every page and 75 lazy`. */
 function describeImporters(chunks: ChunkInfo[]) {
-  const every = chunks.filter(chunk => chunk.loadedBy === 'all').length
+  const every = chunks.filter(chunk => everyPageFiles.value.has(chunk.file)).length
   const lazy = chunks.filter(chunk => chunk.loadedBy === 'lazy').length
   const pages = chunks.length - every - lazy
   const parts = [
@@ -106,7 +107,7 @@ function whyOwnChunk(chunk: ChunkInfo) {
       ? `The app's entry, which starts every page. ${plural(direct.length, 'chunk')} import from it: ${describeImporters(direct)}.`
       : 'The app\'s entry, which starts every page.'
   }
-  if (direct.some(other => other.loadedBy !== 'all')) {
+  if (direct.some(other => !everyPageFiles.value.has(other.file))) {
     return `Its own chunk because ${plural(direct.length, 'chunk')} import it: ${describeImporters(direct)}.`
   }
   // Only chunks every page loads import it, so look further up for the ones that are not.
@@ -119,7 +120,7 @@ function whyOwnChunk(chunk: ChunkInfo) {
       stack.push(...importersOf.value.get(next.file) ?? [])
     }
   }
-  const others = [...reached].filter(other => other.loadedBy !== 'all')
+  const others = [...reached].filter(other => !everyPageFiles.value.has(other.file))
   return others.length
     ? `Its own chunk because ${plural(others.length, 'lazy or page chunk')} reach it through the ${plural(direct.length, 'chunk')} loaded on every page that import it.`
     : `${plural(direct.length, 'chunk')} loaded on every page import it.`
@@ -254,7 +255,7 @@ function pageSize(page: PageInfo) {
             <p class="mt-1 mb-2 text-xs text-muted">
               What each URL's HTML preloads apart from the chunks every page loads: {{ page.initial ? `this page's ${formatBytes(pageSize(page)!)}` : 'its route' }}, plus the lazy-loaded components the page rendered, minus any route files the HTML doesn't load, such as stylesheets Nuxt inlines.
             </p>
-            <PrerenderedUrls :urls="urlsByPage.get(page.file)!" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+            <PrerenderedUrls :urls="urlsByPage.get(page.file)!" :shared="everyPageFiles" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
           </section>
         </div>
       </li>
@@ -271,7 +272,7 @@ function pageSize(page: PageInfo) {
     <p class="mt-1 mb-2 text-xs text-muted">
       Their HTML loads no page's chunk, such as an SPA shell or a page outside the app's routes.
     </p>
-    <PrerenderedUrls :urls="shownOtherUrls" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+    <PrerenderedUrls :urls="shownOtherUrls" :shared="everyPageFiles" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
   </section>
 
   <!-- Routes only count what their static imports reach, so the callout says how to measure what a rendered page loads. -->

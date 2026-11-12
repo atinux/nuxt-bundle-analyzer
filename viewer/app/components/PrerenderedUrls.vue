@@ -4,6 +4,8 @@ import { formatBytes, formatDelta } from '~/utils/data'
 
 const props = defineProps<{
   urls: PrerenderedInfo[]
+  /** The chunks every page loads, which Pages lists once, above the pages. */
+  shared: Set<string>
   metric: Metric
 }>()
 
@@ -19,7 +21,7 @@ function toggle(url: string) {
 }
 
 /** Pages list the chunks every page loads once, above them, so a URL leaves them out like its page's size does. */
-const ownFiles = (files: PreloadedFile[]) => files.filter(file => file.chunk?.loadedBy !== 'all')
+const ownFiles = (files: PreloadedFile[]) => files.filter(file => !props.shared.has(file.file))
 const sumFiles = (files: PreloadedFile[]) => files.reduce((sum, file) => sum + file[props.metric], 0)
 
 const sorted = computed(() => props.urls

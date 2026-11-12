@@ -542,7 +542,7 @@ export interface PageInfo {
   routes: string[]
   /** What its route loads before rendering, when the page is a route of its own. */
   initial?: Sizes
-  /** Other chunks its route loads before rendering, apart from those every route loads. */
+  /** Other chunks its route loads before rendering, apart from those the app's entry loads, which every page loads. */
   loads: ChunkInfo[]
   /** Chunks the page loads on demand, such as lazy components. */
   lazy: ChunkInfo[]
@@ -728,8 +728,27 @@ export function serverChunks(data: RunData): ChunkInfo[] {
   }).sort((a, b) => b.uncompressed - a.uncompressed)
 }
 
+/**
+ * The chunks every page loads because the app's entry imports them statically, the entry first.
+ * Not every chunk all routes share: an app with one route would list that route's page as well.
+ */
+export function appChunks(chunks: ChunkInfo[]): ChunkInfo[] {
+  const byFile = new Map(chunks.map(chunk => [chunk.file, chunk]))
+  const found = new Set<ChunkInfo>()
+  const stack = chunks.filter(chunk => chunk.kind === 'entry')
+  while (stack.length) {
+    const chunk = stack.pop()!
+    if (!found.has(chunk)) {
+      found.add(chunk)
+      stack.push(...chunk.imports.flatMap(file => byFile.get(file) ?? []))
+    }
+  }
+  return [...found]
+}
+
 /** Every page component, with the routes it renders and what they load. */
 export function pages(data: RunData, chunks: ChunkInfo[]): PageInfo[] {
+  const app = new Set(appChunks(chunks))
   return chunks.filter(chunk => chunk.kind === 'page').map((chunk) => {
     const routes = data.routes.filter(route => route.entries.includes(chunk.file))
     const own = routes.find(route => route.entries.at(-1) === chunk.file)
@@ -742,7 +761,7 @@ export function pages(data: RunData, chunks: ChunkInfo[]): PageInfo[] {
       route: own?.path,
       routes: routes.map(route => route.path),
       initial: own && routeSize(data, own),
-      loads: chunks.filter(other => other !== chunk && other.loadedBy !== 'all' && files.has(other.file)),
+      loads: chunks.filter(other => other !== chunk && !app.has(other) && files.has(other.file)),
       lazy: chunks.filter(other => chunk.dynamicImports.includes(other.file)),
     }
   }).sort((a, b) => a.file.localeCompare(b.file))
