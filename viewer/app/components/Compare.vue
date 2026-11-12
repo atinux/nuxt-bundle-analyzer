@@ -139,19 +139,16 @@ const allUrls = computed(() => {
     }))
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || Math.abs(b.html) - Math.abs(a.html))
 })
+/** The URLs whose initial load or HTML changed and the search keeps. */
 const urls = computed(() => {
   const query = props.search.trim().toLowerCase()
-  return query
-    ? allUrls.value.filter(row => row.key.toLowerCase().includes(query))
-    : allUrls.value
+  return allUrls.value.filter(row => (row.status !== 'same' || row.html !== 0) && (!query || row.key.toLowerCase().includes(query)))
 })
 
-/** The routes the search keeps: its path, or the page file that renders it. */
+/** The routes that changed and the search keeps: its path, or the page file that renders it. */
 const routes = computed(() => {
   const query = props.search.trim().toLowerCase()
-  return query
-    ? allRoutes.value.filter(row => [row.key, row.page].some(text => text?.toLowerCase().includes(query)))
-    : allRoutes.value
+  return allRoutes.value.filter(row => row.status !== 'same' && (!query || [row.key, row.page].some(text => text?.toLowerCase().includes(query))))
 })
 
 /** Every file or package that changed and the search keeps, the largest difference first. */
@@ -329,7 +326,7 @@ function percent(delta: number, base: number) {
         Initial Load per Route
       </h3>
       <p class="text-sm text-muted">
-        JavaScript and CSS loaded before each route renders.
+        JavaScript and CSS loaded before each route renders, for the routes that changed.
       </p>
     </template>
     <!-- Phones keep the difference and leave both sizes to the details; anything wider still scrolls sideways. -->
@@ -414,7 +411,7 @@ function percent(delta: number, base: number) {
           </template>
           <tr v-if="!routes.length">
             <td colspan="4" class="px-4 py-6 text-center text-muted">
-              No routes match this search.
+              {{ search.trim() ? 'No changed route matches this search.' : 'No route changed.' }}
             </td>
           </tr>
         </tbody>
@@ -428,7 +425,7 @@ function percent(delta: number, base: number) {
         Initial Load per Prerendered URL
       </h3>
       <p class="text-sm text-muted">
-        JavaScript and CSS each URL's prerendered HTML preloads, and the difference of the HTML itself.
+        JavaScript and CSS each URL's prerendered HTML preloads, and the difference of the HTML itself, for the URLs that changed.
       </p>
     </template>
     <div class="overflow-x-auto">
@@ -511,7 +508,7 @@ function percent(delta: number, base: number) {
           </template>
           <tr v-if="!urls.length">
             <td colspan="5" class="px-4 py-6 text-center text-muted">
-              No URLs match this search.
+              {{ search.trim() ? 'No changed URL matches this search.' : 'No URL changed.' }}
             </td>
           </tr>
         </tbody>
