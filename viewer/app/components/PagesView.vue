@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ChunkInfo, Metric, PageInfo, PrerenderedInfo, Target } from '~/utils/data'
-import { chunkKindLabels, formatBytes, pagesDir } from '~/utils/data'
+import { formatBytes, pagesDir } from '~/utils/data'
 
 const props = defineProps<{
   pages: PageInfo[]
@@ -17,6 +17,8 @@ const emit = defineEmits<{
 }>()
 
 const expanded = ref(new Set<string>())
+/** The key of the chunks every page loads in `expanded`, which no page file can be. */
+const EVERY_PAGE = ' every page'
 function toggle(file: string) {
   expanded.value.has(file)
     ? expanded.value.delete(file)
@@ -49,58 +51,45 @@ const shownOtherUrls = computed(() => query.value
 
 const everyPage = computed(() => props.chunks.filter(chunk => chunk.loadedBy === 'all'))
 /** The app's entry, which leads the label of the chunks every page loads. */
-const entryName = computed(() => {
-  const entry = everyPage.value.find(chunk => chunk.kind === 'entry')
-  return entry && chunkName(entry)
-})
+const entryName = computed(() => everyPage.value.find(chunk => chunk.kind === 'entry')?.file.split('/').pop())
 /** The rest of the chunks every page loads, after the entry. */
 const everyPageOthers = computed(() => {
   const count = everyPage.value.length - (entryName.value ? 1 : 0)
-  return `${count} ${entryName.value ? 'other ' : ''}${count === 1
+  return `${count} ${entryName.value
+    ? 'other '
+    : ''}${count === 1
     ? 'chunk'
-    : 'chunks'} every page loads`
+    : 'chunks'}`
 })
 const everyPageSize = computed(() => everyPage.value.reduce((sum, chunk) => sum + chunk[props.metric] + chunk.css[props.metric], 0))
-const largest = computed(() => Math.max(1, ...props.pages.map(page => page.initial?.[props.metric] ?? 0)))
 
-function chunkSize(chunk: ChunkInfo) {
-  return chunk[props.metric] + chunk.css[props.metric]
-}
-/**
- * A size's share of the page's initial load, so every bar of a page is to the same scale and shows what weighs most.
- * A parent page renders no route of its own, so its chunks measure against the ones they are listed with.
- */
-function share(size: number, page: PageInfo, chunks: ChunkInfo[]) {
-  const total = page.initial?.[props.metric] || chunks.reduce((sum, chunk) => sum + chunkSize(chunk), 0) || 1
-  return `${Math.max(1, Math.round(size / total * 100))}%`
-}
-
-function chunkName(chunk: ChunkInfo) {
-  return chunk.file.split('/').pop()
+/** What a page's route loads before it renders, apart from the chunks every page loads, which the table above lists. */
+function pageSize(page: PageInfo) {
+  return page.initial && page.initial[props.metric] - everyPageSize.value
 }
 </script>
 
 <template>
-  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-    <button class="rounded-lg px-4 py-3 text-left ring ring-default hover:bg-elevated/50" @click="emit('openChunk', everyPage[0]?.file ?? '')">
-      <p class="flex items-center justify-between gap-2 text-xs text-muted">
-        Loaded on Every Page
-        <span class="flex shrink-0 items-center gap-1"><span class="hidden lg:inline">Show Chunks</span><UIcon name="i-lucide-arrow-right" class="size-3.5" /></span>
+  <div class="rounded-lg ring ring-default">
+    <!-- Every page loads these before it renders, so they are listed once rather than in each page's size. -->
+    <div class="flex items-center gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs text-muted" aria-hidden="true">
+      <span class="w-4 shrink-0" />
+      <span class="flex-1">Loaded on Every Page</span>
+      <span class="w-32 shrink-0 text-right">Size</span>
+    </div>
+    <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(EVERY_PAGE)" @click="toggle(EVERY_PAGE)">
+      <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(EVERY_PAGE) }" />
+      <p class="min-w-0 flex-1 text-sm text-highlighted">
+        <template v-if="entryName">
+          <span class="font-mono">{{ entryName }}</span> and
+        </template>{{ everyPageOthers }}
       </p>
-      <p class="text-xl font-semibold text-highlighted">
-        {{ formatBytes(everyPageSize) }}
-      </p>
-      <p class="text-xs text-muted">
-        {{ everyPage.length }} chunks, from the app entry
+      <p class="w-32 shrink-0 text-right text-sm text-highlighted">
+        <span class="sr-only">Size </span>{{ formatBytes(everyPageSize) }}
       </p>
     </button>
-    <div class="rounded-lg px-4 py-3 ring ring-default">
-      <p class="text-xs text-muted">
-        Largest Initial Load
-      </p>
-      <p class="text-xl font-semibold text-highlighted">
-        {{ formatBytes(largest) }}
-      </p>
+    <div v-if="expanded.has(EVERY_PAGE)" class="border-t border-default px-4 py-4 sm:ps-12">
+      <ChunkList :chunks="everyPage" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
     </div>
   </div>
 
@@ -109,8 +98,7 @@ function chunkName(chunk: ChunkInfo) {
     <div class="flex items-center gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs text-muted" aria-hidden="true">
       <span class="w-4 shrink-0" />
       <span class="flex-1">{{ pages.length === 1 ? '1 Page' : `${pages.length} Pages` }}</span>
-      <span class="hidden w-28 shrink-0 text-right sm:block">Page Chunk</span>
-      <span class="w-32 shrink-0 text-right sm:w-48">Initial Load</span>
+      <span class="w-32 shrink-0 text-right">Size</span>
     </div>
     <ul class="divide-y divide-default">
       <li v-for="page in shown" :key="page.file">
@@ -130,17 +118,10 @@ function chunkName(chunk: ChunkInfo) {
               <span v-if="urlsByPage.get(page.file)!.length" class="text-primary"> · {{ urlsByPage.get(page.file)!.length === 1 ? '1 prerendered URL' : `${urlsByPage.get(page.file)!.length} prerendered URLs` }}</span>
             </p>
           </div>
-          <div class="hidden w-28 shrink-0 text-right sm:block">
-            <p class="text-sm text-highlighted">
-              <span class="sr-only">Page chunk </span>{{ formatBytes(page.chunk[metric] + page.chunk.css[metric]) }}
+          <div class="w-32 shrink-0 text-right">
+            <p v-if="page.initial" class="text-sm text-highlighted">
+              <span class="sr-only">Size </span>{{ formatBytes(pageSize(page)!) }}
             </p>
-          </div>
-          <div class="w-32 shrink-0 text-right sm:w-48">
-            <template v-if="page.initial">
-              <p class="text-sm text-highlighted">
-                <span class="sr-only">Initial load </span>{{ formatBytes(page.initial[metric]) }}
-              </p>
-            </template>
             <p v-else class="text-sm text-muted">
               In its child routes
             </p>
@@ -148,60 +129,21 @@ function chunkName(chunk: ChunkInfo) {
         </button>
 
         <div v-if="expanded.has(page.file)" class="space-y-6 border-t border-default px-4 py-4 sm:ps-12">
-          <ChunkContents :parts="page.chunk.contents" :metric="metric" :scale="page.initial?.[metric]" @inspect="target => emit('inspect', target)" />
+          <ChunkContents :parts="page.chunk.contents" :metric="metric" :scale="pageSize(page)" @inspect="target => emit('inspect', target)" />
 
-          <section v-if="page.initial || page.loads.length">
+          <section v-if="page.loads.length">
             <h4 class="mb-2 text-sm text-highlighted">
               Also Loaded Before It Renders
             </h4>
-            <ul class="space-y-1.5">
-              <!-- With the page's chunk above, these add up to its initial load. -->
-              <li v-if="page.initial">
-                <div class="flex items-baseline justify-between gap-3 text-sm">
-                  <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', everyPage[0]?.file ?? '')">
-                    <span class="text-xs"><template v-if="entryName"><span class="font-mono">{{ entryName }}</span> and </template>{{ everyPageOthers }}</span>
-                  </button>
-                  <span class="shrink-0 text-muted">{{ formatBytes(everyPageSize) }}</span>
-                </div>
-                <div class="mt-1 h-1 rounded-full bg-elevated">
-                  <div class="h-1 rounded-full bg-primary" :style="{ width: share(everyPageSize, page, everyPage) }" />
-                </div>
-              </li>
-              <li v-for="chunk in page.loads" :key="chunk.file">
-                <div class="flex items-baseline justify-between gap-3 text-sm">
-                  <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', chunk.file)">
-                    <UBadge :label="chunkKindLabels[chunk.kind]" color="neutral" variant="subtle" size="sm" />
-                    <FileIcon v-if="chunk.src" :path="chunk.src" class="size-3.5" />
-                    <span class="truncate font-mono text-xs">{{ chunk.src ?? chunkName(chunk) }}</span>
-                  </button>
-                  <span class="shrink-0 text-muted">{{ formatBytes(chunkSize(chunk)) }}</span>
-                </div>
-                <div class="mt-1 h-1 rounded-full bg-elevated">
-                  <div class="h-1 rounded-full bg-primary" :style="{ width: share(chunkSize(chunk), page, page.loads) }" />
-                </div>
-              </li>
-            </ul>
+            <!-- With the page's chunk above, these add up to its size. -->
+            <ChunkList :chunks="page.loads" :metric="metric" :scale="pageSize(page)" @open-chunk="file => emit('openChunk', file)" />
           </section>
 
           <section v-if="page.lazy.length">
             <h4 class="mb-2 text-sm text-highlighted">
               Loaded on Demand
             </h4>
-            <ul class="space-y-1.5">
-              <li v-for="chunk in page.lazy" :key="chunk.file">
-                <div class="flex items-baseline justify-between gap-3 text-sm">
-                  <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', chunk.file)">
-                    <UBadge :label="chunkKindLabels[chunk.kind]" color="neutral" variant="subtle" size="sm" />
-                    <FileIcon v-if="chunk.src" :path="chunk.src" class="size-3.5" />
-                    <span class="truncate font-mono text-xs">{{ chunk.src ?? chunkName(chunk) }}</span>
-                  </button>
-                  <span class="shrink-0 text-muted">{{ formatBytes(chunkSize(chunk)) }}</span>
-                </div>
-                <div class="mt-1 h-1 rounded-full bg-elevated">
-                  <div class="h-1 rounded-full bg-primary" :style="{ width: share(chunkSize(chunk), page, page.lazy) }" />
-                </div>
-              </li>
-            </ul>
+            <ChunkList :chunks="page.lazy" :metric="metric" :scale="pageSize(page)" @open-chunk="file => emit('openChunk', file)" />
           </section>
 
           <section v-if="urlsByPage.get(page.file)!.length">
@@ -209,7 +151,7 @@ function chunkName(chunk: ChunkInfo) {
               Prerendered URLs
             </h4>
             <p class="mt-1 mb-2 text-xs text-muted">
-              What each URL's HTML preloads: {{ page.initial ? `this route's ${formatBytes(page.initial[metric])}` : 'its route' }}, plus the lazy-loaded components the page rendered, minus any route files the HTML doesn't load, such as stylesheets Nuxt inlines.
+              What each URL's HTML preloads apart from the chunks every page loads: {{ page.initial ? `this page's ${formatBytes(pageSize(page)!)}` : 'its route' }}, plus the lazy-loaded components the page rendered, minus any route files the HTML doesn't load, such as stylesheets Nuxt inlines.
             </p>
             <PrerenderedUrls :urls="urlsByPage.get(page.file)!" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
           </section>

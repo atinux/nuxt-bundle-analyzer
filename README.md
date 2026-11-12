@@ -14,7 +14,7 @@ https://github.com/user-attachments/assets/db6b95b7-0e33-4a54-9a60-69192bb6becf
 ## Features
 
 - **No setup:** one command builds your app for analysis and opens the analyzer. You don't install or configure anything.
-- **Pages:** each page with the size of its own chunk and of everything it loads before it renders, split into your files and dependencies.
+- **Pages:** the chunks every page loads, then each page with what it loads on top of them before it renders, split into your files and dependencies.
 - **Chunks:** every JavaScript file of the client and Nitro builds, with the files and dependencies in it. Browse them by chunk, by file, or as a 3D city.
 - **Why it's included:** pick any file or package to see its size, the chunks it's in, the chain of imports that leads to it, and what imports it.
 - **Duplicate packages:** packages bundled more than once, with each version, what imports it, and the size of the extra copies.
@@ -70,7 +70,7 @@ The analysis build renders only those URLs, and records the size of each URL's H
 
 This works for SSR apps too. An SSR response has the same HTML tags as the prerendered file, so prerendering a URL in the analysis build shows what an SSR visit preloads. Pages that depend on the request, such as on cookies, auth or live data, are measured as they render at build time.
 
-Each page in **Pages** lists its URLs with their HTML and initial load, split into what comes from its route and what the page added: the lazy-loaded components it rendered. **Compare** and the pull request comment show how each URL changed, split the same way.
+Each page in **Pages** lists its URLs with their HTML and size, split into what comes from its route and what the page added: the lazy-loaded components it rendered. Like a page's size, a URL's size leaves out the chunks every page loads, which **Pages** lists once above the pages. **Compare** and the pull request comment show how each URL's initial load changed, split the same way.
 
 The initial load of a URL counts its HTML's module scripts, `modulepreload` links and stylesheets. It leaves out what the HTML only prefetches and the payload preload.
 
