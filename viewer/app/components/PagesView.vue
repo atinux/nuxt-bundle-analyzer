@@ -51,6 +51,15 @@ const everyPage = computed(() => props.chunks.filter(chunk => chunk.loadedBy ===
 const everyPageSize = computed(() => everyPage.value.reduce((sum, chunk) => sum + chunk[props.metric] + chunk.css[props.metric], 0))
 const largest = computed(() => Math.max(1, ...props.pages.map(page => page.initial?.[props.metric] ?? 0)))
 
+function chunkSize(chunk: ChunkInfo) {
+  return chunk[props.metric] + chunk.css[props.metric]
+}
+/** A chunk's share of the chunks it is listed with, so the bars show what weighs most at a glance. */
+function share(chunk: ChunkInfo, chunks: ChunkInfo[]) {
+  const total = chunks.reduce((sum, other) => sum + chunkSize(other), 0) || 1
+  return `${Math.max(1, Math.round(chunkSize(chunk) / total * 100))}%`
+}
+
 function chunkName(chunk: ChunkInfo) {
   return chunk.file.split('/').pop()
 }
@@ -130,14 +139,19 @@ function chunkName(chunk: ChunkInfo) {
             <h4 class="mb-2 text-sm text-highlighted">
               Also Loaded Before It Renders
             </h4>
-            <ul class="space-y-1">
-              <li v-for="chunk in page.loads" :key="chunk.file" class="flex items-baseline justify-between gap-3 text-sm">
-                <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', chunk.file)">
-                  <UBadge :label="chunkKindLabels[chunk.kind]" color="neutral" variant="subtle" size="sm" />
-                  <FileIcon v-if="chunk.src" :path="chunk.src" class="size-3.5" />
-                  <span class="truncate font-mono text-xs">{{ chunk.src ?? chunkName(chunk) }}</span>
-                </button>
-                <span class="shrink-0 text-muted">{{ formatBytes(chunk[metric] + chunk.css[metric]) }}</span>
+            <ul class="space-y-1.5">
+              <li v-for="chunk in page.loads" :key="chunk.file">
+                <div class="flex items-baseline justify-between gap-3 text-sm">
+                  <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', chunk.file)">
+                    <UBadge :label="chunkKindLabels[chunk.kind]" color="neutral" variant="subtle" size="sm" />
+                    <FileIcon v-if="chunk.src" :path="chunk.src" class="size-3.5" />
+                    <span class="truncate font-mono text-xs">{{ chunk.src ?? chunkName(chunk) }}</span>
+                  </button>
+                  <span class="shrink-0 text-muted">{{ formatBytes(chunkSize(chunk)) }}</span>
+                </div>
+                <div class="mt-1 h-1 rounded-full bg-elevated">
+                  <div class="h-1 rounded-full bg-primary" :style="{ width: share(chunk, page.loads) }" />
+                </div>
               </li>
             </ul>
           </section>
@@ -146,14 +160,19 @@ function chunkName(chunk: ChunkInfo) {
             <h4 class="mb-2 text-sm text-highlighted">
               Loaded on Demand
             </h4>
-            <ul class="space-y-1">
-              <li v-for="chunk in page.lazy" :key="chunk.file" class="flex items-baseline justify-between gap-3 text-sm">
-                <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', chunk.file)">
-                  <UBadge :label="chunkKindLabels[chunk.kind]" color="neutral" variant="subtle" size="sm" />
-                  <FileIcon v-if="chunk.src" :path="chunk.src" class="size-3.5" />
-                  <span class="truncate font-mono text-xs">{{ chunk.src ?? chunkName(chunk) }}</span>
-                </button>
-                <span class="shrink-0 text-muted">{{ formatBytes(chunk[metric] + chunk.css[metric]) }}</span>
+            <ul class="space-y-1.5">
+              <li v-for="chunk in page.lazy" :key="chunk.file">
+                <div class="flex items-baseline justify-between gap-3 text-sm">
+                  <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', chunk.file)">
+                    <UBadge :label="chunkKindLabels[chunk.kind]" color="neutral" variant="subtle" size="sm" />
+                    <FileIcon v-if="chunk.src" :path="chunk.src" class="size-3.5" />
+                    <span class="truncate font-mono text-xs">{{ chunk.src ?? chunkName(chunk) }}</span>
+                  </button>
+                  <span class="shrink-0 text-muted">{{ formatBytes(chunkSize(chunk)) }}</span>
+                </div>
+                <div class="mt-1 h-1 rounded-full bg-elevated">
+                  <div class="h-1 rounded-full bg-primary" :style="{ width: share(chunk, page.lazy) }" />
+                </div>
               </li>
             </ul>
           </section>

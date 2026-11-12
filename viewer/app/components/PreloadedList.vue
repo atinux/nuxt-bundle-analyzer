@@ -5,6 +5,8 @@ import { chunkKindLabels, formatBytes } from '~/utils/data'
 const props = defineProps<{
   files: PreloadedFile[]
   metric: Metric
+  /** The color of the bars, such as the one the list's heading names. */
+  barClass?: string
 }>()
 
 const emit = defineEmits<{
@@ -19,18 +21,26 @@ const sorted = computed(() => [...props.files].sort((a, b) => b[props.metric] - 
 const shown = computed(() => showAll.value
   ? sorted.value
   : sorted.value.slice(0, LIMIT))
+/** A file's share of the whole list, not only of the files shown, so the bars show what weighs most at a glance. */
+const total = computed(() => props.files.reduce((sum, file) => sum + file[props.metric], 0) || 1)
+const share = (file: PreloadedFile) => `${Math.max(1, Math.round(file[props.metric] / total.value * 100))}%`
 </script>
 
 <template>
-  <ul class="space-y-1">
-    <li v-for="file in shown" :key="file.file" class="flex items-baseline justify-between gap-3 text-sm">
-      <!-- A stylesheet on its own is not a chunk the Chunks view lists. -->
-      <component :is="file.chunk ? 'button' : 'span'" class="flex min-w-0 items-center gap-2 text-left" :class="{ 'hover:text-primary': file.chunk }" @click="file.chunk && emit('openChunk', file.file)">
-        <UBadge :label="file.chunk ? chunkKindLabels[file.chunk.kind] : 'CSS'" color="neutral" variant="subtle" size="sm" />
-        <FileIcon v-if="file.chunk?.src" :path="file.chunk.src" class="size-3.5" />
-        <span class="truncate font-mono text-xs">{{ file.chunk?.src ?? file.file.split('/').pop() }}</span>
-      </component>
-      <span class="shrink-0 text-muted">{{ formatBytes(file[metric]) }}</span>
+  <ul class="space-y-1.5">
+    <li v-for="file in shown" :key="file.file">
+      <div class="flex items-baseline justify-between gap-3 text-sm">
+        <!-- A stylesheet on its own is not a chunk the Chunks view lists. -->
+        <component :is="file.chunk ? 'button' : 'span'" class="flex min-w-0 items-center gap-2 text-left" :class="{ 'hover:text-primary': file.chunk }" @click="file.chunk && emit('openChunk', file.file)">
+          <UBadge :label="file.chunk ? chunkKindLabels[file.chunk.kind] : 'CSS'" color="neutral" variant="subtle" size="sm" />
+          <FileIcon v-if="file.chunk?.src" :path="file.chunk.src" class="size-3.5" />
+          <span class="truncate font-mono text-xs">{{ file.chunk?.src ?? file.file.split('/').pop() }}</span>
+        </component>
+        <span class="shrink-0 text-muted">{{ formatBytes(file[metric]) }}</span>
+      </div>
+      <div class="mt-1 h-1 rounded-full bg-elevated">
+        <div class="h-1 rounded-full" :class="barClass ?? 'bg-primary'" :style="{ width: share(file) }" />
+      </div>
     </li>
     <li v-if="files.length > LIMIT && !showAll">
       <button class="text-sm text-muted hover:text-primary" @click="showAll = true">

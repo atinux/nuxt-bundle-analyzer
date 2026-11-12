@@ -55,7 +55,7 @@ function chunkCount(count: number) {
             <p class="mt-1 mb-2 text-xs text-muted">
               Lazy-loaded components the page rendered: its HTML preloads them, but the route's static imports don't reach them.
             </p>
-            <PreloadedList v-if="url.added.length" :files="url.added" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+            <PreloadedList v-if="url.added.length" :files="url.added" :metric="metric" bar-class="bg-warning" @open-chunk="file => emit('openChunk', file)" />
             <p v-else class="text-xs text-muted">
               Its HTML preloads nothing beyond its route.
             </p>
@@ -71,7 +71,7 @@ function chunkCount(count: number) {
             <p class="mt-1 mb-2 text-xs text-muted">
               Files its route's static imports reach that its HTML doesn't preload, such as a stylesheet Nuxt inlined in the HTML or a layout picked at runtime.
             </p>
-            <PreloadedList :files="url.notLoaded" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+            <PreloadedList :files="url.notLoaded" :metric="metric" bar-class="bg-inverted/60" @open-chunk="file => emit('openChunk', file)" />
           </section>
         </template>
 
