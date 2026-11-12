@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { TabsItem } from '@nuxt/ui'
 import type { ChunkInfo, Env, Metric, RunData, Source, Target } from '~/utils/data'
-import { clientChunks, formatBytes, formatDelta, locationChanges, pageChanges, pages, pagesDir, prerenderedSize, routeChanges, routeSize, serverChunks } from '~/utils/data'
+import { clientChunks, formatBytes, formatDelta, locationChanges, pageChanges, pages, pagesDir, prerenderedPages, routeChanges, routeSize, serverChunks } from '~/utils/data'
 
 const props = defineProps<{
   base: RunData
@@ -116,13 +116,12 @@ const allUrls = computed(() => {
   if (props.env !== 'client') {
     return []
   }
-  const sizesOf = (data: RunData) => new Map(data.prerendered.map(page => [
+  const sizesOf = (data: RunData) => new Map(prerenderedPages(data, clientChunks(data)).map(page => [
     page.url,
     {
-      initial: prerenderedSize(data, page)[props.metric],
-      html: props.metric === 'uncompressed'
-        ? page.size
-        : page[props.metric],
+      initial: page.initial[props.metric],
+      added: page.addedSize[props.metric],
+      html: page.html[props.metric],
     },
   ]))
   const before = sizesOf(props.base)
@@ -133,12 +132,27 @@ const allUrls = computed(() => {
       ...after.keys(),
     ]),
   ]
-    .map(url => ({
-      ...toRow(url, before.get(url)?.initial, after.get(url)?.initial),
-      html: (after.get(url)?.html ?? 0) - (before.get(url)?.html ?? 0),
-    }))
+    .map((url) => {
+      const row = toRow(url, before.get(url)?.initial, after.get(url)?.initial)
+      // The lazy-loaded components the page rendered, in each run; the rest of the initial load is from its route.
+      const added = {
+        base: before.get(url)?.added ?? 0,
+        current: after.get(url)?.added ?? 0,
+      }
+      const addedDelta = added.current - added.base
+      return {
+        ...row,
+        html: (after.get(url)?.html ?? 0) - (before.get(url)?.html ?? 0),
+        added,
+        addedDelta,
+        routeDelta: row.delta - addedDelta,
+        // Split the difference only when the page rendered components in either run.
+        split: added.base > 0 || added.current > 0,
+      }
+    })
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || Math.abs(b.html) - Math.abs(a.html))
 })
+const sides = ['base', 'current'] as const
 /** The URLs whose initial load or HTML changed and the search keeps. */
 const urls = computed(() => {
   const query = props.search.trim().toLowerCase()
@@ -452,7 +466,7 @@ function percent(delta: number, base: number) {
         <tbody>
           <template v-for="row in urls" :key="row.key">
             <tr class="cursor-pointer border-b border-default last:border-0" @click="toggle(`url:${row.key}`)">
-              <td class="px-4 py-2">
+              <td class="px-4 py-2 align-top">
                 <div class="flex min-w-32 items-center gap-2">
                   <UButton
                     :icon="expanded.has(`url:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
@@ -466,19 +480,38 @@ function percent(delta: number, base: number) {
                   <span class="min-w-0 font-mono text-xs break-all">{{ row.key }}</span>
                 </div>
               </td>
-              <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden">
-                {{ row.base === undefined ? '—' : formatBytes(row.base) }}
+              <td v-for="side in sides" :key="side" class="px-4 py-2 text-right align-top whitespace-nowrap max-sm:hidden">
+                <template v-if="row[side] === undefined">
+                  —
+                </template>
+                <template v-else>
+                  {{ formatBytes(row[side]!) }}
+                  <!-- Adds up to the size, as in the Prerendered tab: from its route, and what the rendered page adds, when it adds any. -->
+                  <p v-if="row.added[side]" class="text-xs">
+                    <span class="text-primary"><span class="sr-only">From its route </span>{{ formatBytes(row[side]! - row.added[side]) }}</span>
+                    <span class="text-muted"> + </span>
+                    <span class="text-warning"><span class="sr-only">added by the rendered page </span>{{ formatBytes(row.added[side]) }}</span>
+                  </p>
+                </template>
               </td>
-              <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden">
-                {{ row.current === undefined ? '—' : formatBytes(row.current) }}
-              </td>
-              <td class="px-4 py-2 text-right whitespace-nowrap">
+              <td class="px-4 py-2 text-right align-top whitespace-nowrap">
                 <UBadge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New URL' : 'Removed'" color="neutral" variant="subtle" />
-                <span v-else :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
+                <template v-else>
+                  <span :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
+                  <!-- The dots name the colors of the sizes, as the Prerendered tab's headings do. -->
+                  <template v-if="row.split && row.delta">
+                    <p class="text-xs whitespace-normal text-muted">
+                      <span class="me-1.5 inline-block size-2 rounded-xs bg-primary" /><span><span :class="deltaClass(row.routeDelta)">{{ formatDelta(row.routeDelta) }}</span> from its route</span>
+                    </p>
+                    <p class="text-xs whitespace-normal text-muted">
+                      <span class="me-1.5 inline-block size-2 rounded-xs bg-warning" /><span><span :class="deltaClass(row.addedDelta)">{{ formatDelta(row.addedDelta) }}</span> added by the rendered page</span>
+                    </p>
+                  </template>
+                </template>
                 <!-- Phones have no HTML column, so the difference of the HTML goes under this one. -->
                 <span v-if="row.status === 'changed' || row.status === 'same'" class="block text-xs sm:hidden" :class="deltaClass(row.html)">HTML {{ formatDelta(row.html) }}</span>
               </td>
-              <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden" :class="row.status === 'changed' || row.status === 'same' ? deltaClass(row.html) : 'text-muted'">
+              <td class="px-4 py-2 text-right align-top whitespace-nowrap max-sm:hidden" :class="row.status === 'changed' || row.status === 'same' ? deltaClass(row.html) : 'text-muted'">
                 {{ row.status === 'changed' || row.status === 'same' ? formatDelta(row.html) : '—' }}
               </td>
             </tr>

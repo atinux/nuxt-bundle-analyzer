@@ -88,7 +88,7 @@ The `ignore` function keeps the run to those URLs, even when the app crawls link
 
 This works for SSR apps too. An SSR response has the same HTML tags as the prerendered file, so prerendering a URL in the analysis build shows what an SSR visit preloads. Pages that depend on the request, such as on cookies, auth or live data, are measured as they render at build time.
 
-The **Prerendered** tab lists each URL with its HTML and its initial load, split into what comes from its route and what the page added: the lazy-loaded components it rendered. Each page in **Pages** lists the URLs of its routes, and **Compare** and the pull request comment show how each URL changed.
+The **Prerendered** tab lists each URL with its HTML and its initial load, split into what comes from its route and what the page added: the lazy-loaded components it rendered. Each page in **Pages** lists the URLs of its routes, and **Compare** and the pull request comment show how each URL changed, split the same way.
 
 The initial load of a URL counts its HTML's module scripts, `modulepreload` links and stylesheets. It leaves out what the HTML only prefetches and the payload preload.
 

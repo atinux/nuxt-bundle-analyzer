@@ -156,6 +156,34 @@ describe('renderComment', () => {
     expect(markdown).toContain('Prerendered URLs count the JavaScript and CSS their HTML preloads')
   })
 
+  it('splits a prerendered URL\'s difference between its route and the components the page rendered', () => {
+    const docs = (route: number, component: number) => {
+      const data = run({ '/docs': route })
+      data.chunks['_nuxt/0-5.js']!.src = 'app/pages/docs.vue'
+      data.chunks['_nuxt/Prose.js'] = {
+        file: '_nuxt/Prose.js',
+        type: 'js',
+        size: component,
+        gzip: component,
+        brotli: component,
+        imports: [],
+        dynamicImports: [],
+        css: [],
+      }
+      data.prerendered.push({
+        url: '/docs/intro',
+        size: 1000,
+        gzip: 1000,
+        brotli: 1000,
+        files: ['_nuxt/0-5.js', '_nuxt/Prose.js'],
+      })
+      return data
+    }
+    expect(urlLines(renderComment(docs(10_000, 2000), docs(10_300, 2500)))).toEqual([
+      '| <code>/docs/intro</code> | 12.8 kB<br><sub>2.50 kB from components</sub> | +800 B (+6.7%)<br><sub>route +300 B, components +500 B</sub> | 1.00 kB | ±0 B |',
+    ])
+  })
+
   it('says no prerendered URL changed when every change is under 100 B or the base has none, and leaves the table out without any', () => {
     const markdown = renderComment(prerender(run({}), {
       '/a': [1000, 1000],

@@ -769,11 +769,6 @@ function preloadedChunks(data: RunData, page: PrerenderedPage | undefined): Chun
   return [...chunks]
 }
 
-/** What a prerendered URL's HTML preloads, summed. */
-export function prerenderedSize(data: RunData, page: PrerenderedPage): Sizes {
-  return sumSizes(preloadedChunks(data, page))
-}
-
 /** A file a prerendered URL preloads: a JS chunk with those of its stylesheets the HTML preloads, or a stylesheet on its own. */
 export interface PreloadedFile extends Sizes {
   file: string
