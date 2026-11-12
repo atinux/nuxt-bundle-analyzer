@@ -422,7 +422,7 @@ function percent(delta: number, base: number) {
     </div>
   </UCard>
 
-  <UCard v-if="show === 'tables' && table === 'routes' && allUrls.length" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+  <UCard v-if="show === 'tables' && (table === 'routes' || !allRoutes.length) && allUrls.length" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
     <template #header>
       <h3 class="text-base text-highlighted">
         Initial Load per Prerendered URL
@@ -478,6 +478,8 @@ function percent(delta: number, base: number) {
               <td class="px-4 py-2 text-right whitespace-nowrap">
                 <UBadge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New URL' : 'Removed'" color="neutral" variant="subtle" />
                 <span v-else :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
+                <!-- Phones have no HTML column, so the difference of the HTML goes under this one. -->
+                <span v-if="row.status === 'changed' || row.status === 'same'" class="block text-xs sm:hidden" :class="deltaClass(row.html)">HTML {{ formatDelta(row.html) }}</span>
               </td>
               <td class="px-4 py-2 text-right whitespace-nowrap max-sm:hidden" :class="row.status === 'changed' || row.status === 'same' ? deltaClass(row.html) : 'text-muted'">
                 {{ row.status === 'changed' || row.status === 'same' ? formatDelta(row.html) : '—' }}

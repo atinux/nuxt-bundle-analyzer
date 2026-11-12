@@ -253,7 +253,8 @@ const clientChunkList = computed(() => chunksOf(data.value, 'client'))
 const pageList = computed(() => data.value
   ? pages(data.value, clientChunkList.value)
   : [])
-const prerenderedList = computed(() => data.value
+// Checked first, so a run without prerendered pages doesn't derive the client chunks for the tabs.
+const prerenderedList = computed(() => data.value?.prerendered.length
   ? prerenderedPages(data.value, clientChunkList.value)
   : [])
 const largestPage = computed(() => Math.max(0, ...pageList.value.map(page => page.initial?.[state.metric] ?? 0)))

@@ -57,14 +57,26 @@ const ATTR_RE = /([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))
 
 const logger = useLogger('nuxt-bundle-analyzer')
 
+const ORIGIN_RE = /^(?:[a-z][\w+.-]*:)?\/\/[^/]*/i
+const SLASHES_RE = /^\/+|\/+$/g
+/** Comments and the contents of scripts and styles, which hold no tag the browser loads. */
+const INERT_RE = /<!--[\s\S]*?-->|(<(script|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>)[\s\S]*?<\/\2\s*>/gi
+
+/** The path of a URL, without its origin, query, hash or the slashes around it. */
+function pathOf(url: string) {
+  return url.split(/[?#]/)[0]!.replace(ORIGIN_RE, '').replace(SLASHES_RE, '')
+}
+
 /**
  * The client files an HTML page preloads, as `chunks` keys such as `_nuxt/entry.js`: module scripts,
- * modulepreload and stylesheet links under `assetsDir`. Prefetch and the payload preload are left out.
+ * modulepreload and stylesheet links under the build assets directory. Prefetch and the payload preload are left out.
  */
-export function htmlAssets(html: string, assetsDir: string): string[] {
-  const dir = `/${assetsDir.replace(/^\/+|\/+$/g, '')}/`.replace('//', '/')
+export function htmlAssets(html: string, app: { baseURL: string, buildAssetsDir: string, cdnURL?: string }): string[] {
+  const dir = app.buildAssetsDir.replace(SLASHES_RE, '')
+  // Assets are served from the CDN when there is one, from the base URL otherwise.
+  const bases = [app.cdnURL, app.baseURL].map(url => pathOf(url ?? '')).filter(Boolean)
   const files = new Set<string>()
-  for (const [, tag, attrs = ''] of html.matchAll(TAG_RE)) {
+  for (const [, tag, attrs = ''] of html.replace(INERT_RE, (_, open = '') => open).matchAll(TAG_RE)) {
     const values: Record<string, string> = {}
     for (const [, name, double, single, bare] of attrs.matchAll(ATTR_RE)) {
       values[name!.toLowerCase()] = double ?? single ?? bare ?? ''
@@ -77,10 +89,17 @@ export function htmlAssets(html: string, assetsDir: string): string[] {
       continue
     }
     // `/_nuxt/x.js`, `/base/_nuxt/x.js` and `https://cdn/_nuxt/x.js` are all `_nuxt/x.js`.
-    const path = `/${url.split(/[?#]/)[0]!.replace(/^(?:[a-z][\w+.-]*:)?\/\/[^/]*/i, '').replace(/^\/+/, '')}`
-    const index = path.indexOf(dir)
+    let path = pathOf(url)
+    const base = bases.find(base => path.startsWith(`${base}/`))
+    if (base) {
+      path = path.slice(base.length + 1)
+    }
+    // A base URL set at runtime is unknown here, so the build assets directory is looked for anywhere in the path.
+    const index = dir
+      ? `/${path}`.indexOf(`/${dir}/`)
+      : 0
     if (index !== -1) {
-      files.add(path.slice(index + 1))
+      files.add(path.slice(index))
     }
   }
   return [...files]
@@ -122,7 +141,7 @@ export function collectAnalyzeData(nuxt: Nuxt) {
         size: html.byteLength,
         gzip: gzipSync(html).byteLength,
         brotli: brotliCompressSync(html).byteLength,
-        files: htmlAssets(route.contents, nuxt.options.app.buildAssetsDir),
+        files: htmlAssets(route.contents, nuxt.options.app),
       })
     })
   })

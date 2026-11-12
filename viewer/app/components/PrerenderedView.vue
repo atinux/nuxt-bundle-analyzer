@@ -28,6 +28,7 @@ const shown = computed(() => {
         page.url,
         page.route?.path,
         page.page?.src,
+        ...page.files.map(file => file.chunk?.src ?? file.file),
       ].some(text => text?.toLowerCase().includes(query)))
     : props.pages
 })
