@@ -80,16 +80,21 @@ function pageSize(page: PageInfo) {
         <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(chunk.file)" @click="toggle(chunk.file)">
           <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(chunk.file) }" />
           <div class="min-w-0 flex-1">
-            <p class="flex items-center gap-2 font-mono text-sm text-highlighted">
+            <!-- The icon sits beside both lines, centered on them, as on the pages below. -->
+            <div class="flex items-center gap-2">
               <FileIcon :path="chunk.file" class="size-4" />
-              <!-- The file the browser requests, with the source it is built from below. -->
-              <span class="truncate">{{ chunkName(chunk) }}</span>
-            </p>
-            <p class="truncate ps-6 text-xs text-muted">
-              {{ chunkKindLabels[chunk.kind] }}<template v-if="chunk.src">
-                · <span class="font-mono">{{ chunk.src }}</span>
-              </template>
-            </p>
+              <div class="min-w-0">
+                <!-- The file the browser requests, with the source it is built from below. -->
+                <p class="truncate font-mono text-sm text-highlighted">
+                  {{ chunkName(chunk) }}
+                </p>
+                <p class="truncate text-xs text-muted">
+                  {{ chunkKindLabels[chunk.kind] }}<template v-if="chunk.src">
+                    · <span class="font-mono">{{ chunk.src }}</span>
+                  </template>
+                </p>
+              </div>
+            </div>
             <!-- Its share of what every page loads, so what takes the space stands out. -->
             <div class="mt-1.5 ms-6 h-1 rounded-full bg-elevated">
               <div class="h-1 rounded-full bg-primary" :style="{ width: `${Math.max(1, Math.round(chunkSize(chunk) / (everyPageSize || 1) * 100))}%` }" />
@@ -123,19 +128,22 @@ function pageSize(page: PageInfo) {
       <li v-for="page in shown" :key="page.file">
         <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(page.file)" @click="toggle(page.file)">
           <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(page.file) }" />
-          <div class="min-w-0 flex-1">
-            <p class="flex items-center gap-2 font-mono text-sm text-highlighted">
-              <FileIcon :path="page.file" class="size-4" />
+          <!-- The icon sits beside both lines, centered on them. -->
+          <div class="flex min-w-0 flex-1 items-center gap-2">
+            <FileIcon :path="page.file" class="size-4" />
+            <div class="min-w-0">
               <!-- Narrow screens leave out the pages directory every page shares, so the file name fits. -->
-              <span class="truncate"><span class="max-sm:hidden">{{ pagesDir(page.file) }}</span>{{ page.file.slice(pagesDir(page.file).length) }}</span>
-            </p>
-            <p class="truncate ps-6 text-xs text-muted">
-              <span v-if="page.route" class="font-mono">{{ page.route }}</span>
-              <template v-else>
-                Parent of <span class="font-mono">{{ page.routes.join(', ') }}</span>
-              </template>
-              <span v-if="urlsByPage.get(page.file)!.length" class="text-primary"> · {{ urlsByPage.get(page.file)!.length === 1 ? '1 prerendered URL' : `${urlsByPage.get(page.file)!.length} prerendered URLs` }}</span>
-            </p>
+              <p class="truncate font-mono text-sm text-highlighted">
+                <span class="max-sm:hidden">{{ pagesDir(page.file) }}</span>{{ page.file.slice(pagesDir(page.file).length) }}
+              </p>
+              <p class="truncate text-xs text-muted">
+                <span v-if="page.route" class="font-mono">{{ page.route }}</span>
+                <template v-else>
+                  Parent of <span class="font-mono">{{ page.routes.join(', ') }}</span>
+                </template>
+                <span v-if="urlsByPage.get(page.file)!.length" class="text-primary"> · {{ urlsByPage.get(page.file)!.length === 1 ? '1 prerendered URL' : `${urlsByPage.get(page.file)!.length} prerendered URLs` }}</span>
+              </p>
+            </div>
           </div>
           <div class="w-32 shrink-0 text-right">
             <p v-if="page.initial" class="text-sm text-highlighted">
