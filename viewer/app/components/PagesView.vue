@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ChunkInfo, Metric, PageInfo, PrerenderedInfo, Target } from '~/utils/data'
-import { formatBytes, pagesDir } from '~/utils/data'
+import { chunkKindLabels, formatBytes, pagesDir } from '~/utils/data'
 
 const props = defineProps<{
   pages: PageInfo[]
@@ -48,6 +48,14 @@ const shownOtherUrls = computed(() => query.value
   : otherUrls.value)
 
 const everyPage = computed(() => props.chunks.filter(chunk => chunk.loadedBy === 'all'))
+function chunkSize(chunk: ChunkInfo) {
+  return chunk[props.metric] + chunk.css[props.metric]
+}
+function chunkName(chunk: ChunkInfo) {
+  return chunk.file.split('/').pop()
+}
+// Largest first, so what takes the space comes first.
+const everyPageSorted = computed(() => [...everyPage.value].sort((a, b) => chunkSize(b) - chunkSize(a)))
 const everyPageSize = computed(() => everyPage.value.reduce((sum, chunk) => sum + chunk[props.metric] + chunk.css[props.metric], 0))
 
 /** What a page's route loads before it renders, apart from the chunks every page loads, which the table above lists. */
@@ -67,9 +75,42 @@ function pageSize(page: PageInfo) {
       </span>
       <span class="text-sm text-highlighted">{{ formatBytes(everyPageSize) }}</span>
     </h3>
-    <div class="px-4 py-3">
-      <ChunkList :chunks="everyPage" :metric="metric" expandable @open-chunk="file => emit('openChunk', file)" @inspect="target => emit('inspect', target)" />
-    </div>
+    <ul class="divide-y divide-default">
+      <li v-for="chunk in everyPageSorted" :key="chunk.file">
+        <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(chunk.file)" @click="toggle(chunk.file)">
+          <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(chunk.file) }" />
+          <div class="min-w-0 flex-1">
+            <p class="flex items-center gap-2 font-mono text-sm text-highlighted">
+              <FileIcon :path="chunk.file" class="size-4" />
+              <!-- The file the browser requests, with the source it is built from below. -->
+              <span class="truncate">{{ chunkName(chunk) }}</span>
+            </p>
+            <p class="truncate ps-6 text-xs text-muted">
+              {{ chunkKindLabels[chunk.kind] }}<template v-if="chunk.src">
+                · <span class="font-mono">{{ chunk.src }}</span>
+              </template>
+            </p>
+            <!-- Its share of what every page loads, so what takes the space stands out. -->
+            <div class="mt-1.5 ms-6 h-1 rounded-full bg-elevated">
+              <div class="h-1 rounded-full bg-primary" :style="{ width: `${Math.max(1, Math.round(chunkSize(chunk) / (everyPageSize || 1) * 100))}%` }" />
+            </div>
+          </div>
+          <p class="w-32 shrink-0 text-right text-sm text-highlighted">
+            <span class="sr-only">Size </span>{{ formatBytes(chunkSize(chunk)) }}
+          </p>
+        </button>
+        <div v-if="expanded.has(chunk.file)" class="space-y-3 border-t border-default px-4 py-4 sm:ps-12">
+          <ChunkContents :parts="chunk.contents" :metric="metric" @inspect="target => emit('inspect', target)" />
+          <div class="flex items-center justify-between gap-3 text-xs text-muted">
+            <span>{{ chunk.css[metric] ? `Its size includes ${formatBytes(chunk.css[metric])} of CSS.` : '' }}</span>
+            <button class="flex shrink-0 items-center gap-1 hover:text-primary" @click="emit('openChunk', chunk.file)">
+              Show in Chunks
+              <UIcon name="i-lucide-arrow-right" class="size-3.5" />
+            </button>
+          </div>
+        </div>
+      </li>
+    </ul>
   </section>
 
   <div class="rounded-lg ring ring-default">
