@@ -284,6 +284,13 @@ async function openUrl(url: string) {
   await nextTick()
   focusedUrl.value = url
 }
+/** Prerendered with only the URLs of a page, found by the page's file. */
+function openPageUrls(file: string) {
+  Object.assign(state, {
+    view: 'prerendered',
+    search: file,
+  })
+}
 
 const inspected = computed<Target | undefined>(() => state.package
   ? { kind: 'package', id: state.package }
@@ -495,6 +502,7 @@ const metricItems: TabsItem[] = [
             @inspect="inspect"
             @open-chunk="openChunk"
             @open-url="openUrl"
+            @open-page-urls="openPageUrls"
           />
 
           <ChunksView

@@ -89,7 +89,7 @@ function chunkCount(files: PreloadedFile[]) {
     <!-- The columns are named once here rather than on every row. -->
     <div class="flex items-center gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs text-muted" aria-hidden="true">
       <span class="w-4 shrink-0" />
-      <span class="flex-1">{{ pages.length === 1 ? '1 Prerendered URL' : `${pages.length} Prerendered URLs` }}</span>
+      <span class="flex-1">{{ shown.length === pages.length ? '' : `${shown.length} of ` }}{{ pages.length === 1 ? '1 Prerendered URL' : `${pages.length} Prerendered URLs` }}</span>
       <span class="hidden w-20 shrink-0 text-right sm:block">HTML</span>
       <span class="w-32 shrink-0 text-right sm:w-48">Initial Load</span>
     </div>

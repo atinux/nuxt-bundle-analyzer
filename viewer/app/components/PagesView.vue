@@ -15,6 +15,7 @@ const emit = defineEmits<{
   inspect: [target: Target]
   openChunk: [file: string]
   openUrl: [url: string]
+  openPageUrls: [file: string]
 }>()
 
 const expanded = ref(new Set<string>())
@@ -42,8 +43,12 @@ const largest = computed(() => Math.max(1, ...props.pages.map(page => page.initi
 const urlsByPage = computed(() => new Map(props.pages.map(page => [
   page.file,
   // Under the page that renders its route only, not also under the parents of that page.
-  props.prerendered.filter(url => url.page?.file === page.chunk.file),
+  props.prerendered
+    .filter(url => url.page?.file === page.chunk.file)
+    .sort((a, b) => b.initial[props.metric] - a.initial[props.metric]),
 ])))
+/** A page can render thousands of URLs, such as blog posts, so it lists its largest and leaves the rest to Prerendered. */
+const URL_LIMIT = 5
 
 function chunkName(chunk: ChunkInfo) {
   return chunk.file.split('/').pop()
@@ -163,13 +168,19 @@ function chunkName(chunk: ChunkInfo) {
               What each URL's HTML preloads: {{ page.initial ? `this route's ${formatBytes(page.initial[metric])}` : 'its route' }}, plus the lazy-loaded components the page rendered, minus any route files the HTML doesn't load, such as stylesheets Nuxt inlines. Open one to see its files in Prerendered.
             </p>
             <ul class="space-y-1">
-              <li v-for="url in urlsByPage.get(page.file)" :key="url.url">
+              <li v-for="url in urlsByPage.get(page.file)!.slice(0, URL_LIMIT)" :key="url.url">
                 <button class="group flex w-full items-baseline gap-3 text-left text-sm hover:text-primary" @click="emit('openUrl', url.url)">
                   <span class="min-w-0 flex-1 truncate font-mono text-xs">{{ url.url }}</span>
                   <span class="hidden shrink-0 text-xs text-muted sm:inline">HTML {{ formatBytes(url.html[metric]) }}</span>
                   <span class="hidden w-36 shrink-0 text-right text-xs text-muted sm:inline">{{ url.added.length ? `${formatDelta(url.addedSize[metric])} in ${url.added.length === 1 ? '1 chunk' : `${url.added.length} chunks`}` : 'Nothing added' }}</span>
                   <span class="shrink-0 text-highlighted group-hover:text-primary">{{ formatBytes(url.initial[metric]) }}</span>
                   <UIcon name="i-lucide-arrow-right" class="size-3.5 shrink-0 self-center text-muted group-hover:text-primary" />
+                </button>
+              </li>
+              <li v-if="urlsByPage.get(page.file)!.length > URL_LIMIT">
+                <button class="flex items-center gap-1 text-sm text-muted hover:text-primary" @click="emit('openPageUrls', page.file)">
+                  And {{ urlsByPage.get(page.file)!.length - URL_LIMIT === 1 ? '1 more URL' : `${urlsByPage.get(page.file)!.length - URL_LIMIT} more URLs` }} in Prerendered
+                  <UIcon name="i-lucide-arrow-right" class="size-3.5" />
                 </button>
               </li>
             </ul>
