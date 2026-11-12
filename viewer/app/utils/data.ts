@@ -60,6 +60,11 @@ export interface PackageCopy extends Sizes {
   importers: string[]
 }
 
+/** Whether more than one copy of a package keeps code in the output, so the package is really bundled twice. */
+export function isDuplicated(copies: PackageCopy[]): boolean {
+  return copies.filter(copy => copy.uncompressed > 0).length > 1
+}
+
 export type ImportKind = 'import' | 'dynamic-import'
 
 /** What the detail panel shows: one source file, or a package with all its files. */
@@ -121,7 +126,7 @@ export interface Bundle extends Sizes {
   entries: Set<string>
   /** Packages bundled from more than one location, such as two versions, with each copy. */
   duplicates: Map<string, PackageCopy[]>
-  /** Loops of imports, each starting from its first file, which the last one imports again. */
+  /** Loops of imports through the project's own files, each starting from its first file, which the last one imports again. */
   cycles: string[][]
 }
 
@@ -290,7 +295,8 @@ function toBundle(report: SondaReport): Bundle {
     if (cycle.length > 1 && cycle.at(-1) === cycle[0]) {
       cycle.pop()
     }
-    if (cycle.length < 2) {
+    // A loop only through dependencies or Nuxt's build is not the project's to fix.
+    if (cycle.length < 2 || !cycle.some(id => !id.startsWith('node_modules/') && sourceKind({ id }) !== 'nuxt')) {
       continue
     }
     // The same loop can be reported from any of its files, so it starts from the first in order.

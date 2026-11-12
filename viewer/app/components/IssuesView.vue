@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Bundle, Metric, Target } from '~/utils/data'
-import { formatBytes, sourceKind } from '~/utils/data'
+import { formatBytes, isDuplicated } from '~/utils/data'
 
 const props = defineProps<{
   bundle: Bundle
@@ -17,6 +17,8 @@ const matches = (texts: string[]) => !query.value || texts.some(text => text.toL
 
 /** Packages bundled more than once, those whose extra copies weigh the most first. */
 const duplicates = computed(() => [...props.bundle.duplicates]
+  // Copies tree-shaken out of the output cost nothing, so they are not an issue.
+  .filter(([, copies]) => isDuplicated(copies))
   .map(([name, copies]) => {
     const sizes = copies.map(copy => copy[props.metric])
     // Keeping one copy, the largest, would save the size of the others.
@@ -24,7 +26,6 @@ const duplicates = computed(() => [...props.bundle.duplicates]
       name,
       copies,
       extra: sizes.reduce((sum, size) => sum + size, 0) - Math.max(...sizes),
-      withCode: sizes.filter(Boolean).length,
     }
   })
   .filter(duplicate => matches([
@@ -33,30 +34,8 @@ const duplicates = computed(() => [...props.bundle.duplicates]
   ]))
   .sort((a, b) => b.extra - a.extra || a.name.localeCompare(b.name)))
 
-const origins = {
-  yours: 'In Your Code',
-  // Nuxt's build of the app, such as the chunks of the Vue server build that Nitro bundles.
-  build: 'In Nuxt’s Build',
-  dependencies: 'In Dependencies',
-} as const
-
-/** Where a loop of imports is: through the project's own files, Nuxt's build of them, or only dependencies. */
-function originOf(cycle: string[]): keyof typeof origins {
-  if (cycle.some(id => !id.startsWith('node_modules/') && sourceKind({ id }) !== 'nuxt')) {
-    return 'yours'
-  }
-  return cycle.some(id => id.startsWith('.nuxt/'))
-    ? 'build'
-    : 'dependencies'
-}
-
-/** Loops of imports grouped by where they are, those through the project's own files first. */
-const cycleGroups = computed(() => (Object.keys(origins) as (keyof typeof origins)[])
-  .map(origin => ({
-    origin,
-    cycles: props.bundle.cycles.filter(cycle => originOf(cycle) === origin && matches(cycle)).sort((a, b) => a.length - b.length),
-  }))
-  .filter(group => group.cycles.length > 0))
+/** Loops of imports through the project's own files, the shortest first. */
+const cycles = computed(() => props.bundle.cycles.filter(matches).sort((a, b) => a.length - b.length))
 </script>
 
 <template>
@@ -77,7 +56,7 @@ const cycleGroups = computed(() => (Object.keys(origins) as (keyof typeof origin
             <span class="truncate">{{ duplicate.name }}</span>
           </button>
           <span class="shrink-0 text-sm text-muted">
-            {{ duplicate.copies.length }} copies · {{ duplicate.extra ? `${formatBytes(duplicate.extra)} in extra copies` : duplicate.withCode ? 'only one has code in the output' : 'none has code in the output' }}
+            {{ duplicate.copies.length }} copies · {{ formatBytes(duplicate.extra) }} in extra copies
           </span>
         </div>
         <PackageCopies :copies="duplicate.copies" :metric="metric" class="ps-6" @inspect="target => emit('inspect', target)" />
@@ -97,26 +76,21 @@ const cycleGroups = computed(() => (Object.keys(origins) as (keyof typeof origin
         Files that import each other in a loop. One of them runs before the others are ready, so a value it imports can still be undefined.
       </p>
     </template>
-    <section v-for="group in cycleGroups" :key="group.origin" class="border-b border-default last:border-0">
-      <h4 class="bg-elevated/50 px-4 py-2 text-xs text-highlighted">
-        {{ origins[group.origin] }}
-      </h4>
-      <ul class="divide-y divide-default">
-        <li v-for="cycle in group.cycles" :key="cycle.join()" class="px-4 py-3">
-          <ol class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
-            <li v-for="(id, index) in [...cycle, cycle[0]!]" :key="index" class="flex min-w-0 items-center gap-1.5">
-              <UIcon v-if="index > 0" :name="index === cycle.length ? 'i-lucide-repeat' : 'i-lucide-arrow-right'" class="size-3.5 shrink-0 text-muted" aria-hidden="true" />
-              <button class="flex min-w-0 items-center gap-1.5 text-left font-mono hover:text-primary hover:underline" :class="{ 'text-muted': index === cycle.length }" :title="`Show details of ${id}`" @click="emit('inspect', { kind: 'file', id })">
-                <FileIcon :path="id" class="size-3.5" />
-                <span class="break-all">{{ id }}</span>
-              </button>
-            </li>
-          </ol>
-        </li>
-      </ul>
-    </section>
-    <p v-if="cycleGroups.length === 0" class="px-4 py-6 text-center text-sm text-muted">
-      {{ query ? 'No circular import matches this search.' : 'No files import each other in a loop.' }}
+    <ul v-if="cycles.length" class="divide-y divide-default">
+      <li v-for="cycle in cycles" :key="cycle.join()" class="px-4 py-3">
+        <ol class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+          <li v-for="(id, index) in [...cycle, cycle[0]!]" :key="index" class="flex min-w-0 items-center gap-1.5">
+            <UIcon v-if="index > 0" :name="index === cycle.length ? 'i-lucide-repeat' : 'i-lucide-arrow-right'" class="size-3.5 shrink-0 text-muted" aria-hidden="true" />
+            <button class="flex min-w-0 items-center gap-1.5 text-left font-mono hover:text-primary hover:underline" :class="{ 'text-muted': index === cycle.length }" :title="`Show details of ${id}`" @click="emit('inspect', { kind: 'file', id })">
+              <FileIcon :path="id" class="size-3.5" />
+              <span class="break-all">{{ id }}</span>
+            </button>
+          </li>
+        </ol>
+      </li>
+    </ul>
+    <p v-else class="px-4 py-6 text-center text-sm text-muted">
+      {{ query ? 'No circular import matches this search.' : 'None of your files import each other in a loop.' }}
     </p>
   </UCard>
 </template>
