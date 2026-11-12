@@ -60,7 +60,11 @@ function pageSize(page: PageInfo) {
   <section class="rounded-lg ring ring-default">
     <!-- Every page loads these before it renders, so they are listed once rather than in each page's size. -->
     <h3 class="flex items-center justify-between gap-4 border-b border-default bg-elevated/50 px-4 py-2 text-xs text-muted">
-      <span>Loaded on Every Page</span>
+      <span>
+        Loaded on Every Page
+        <!-- One request per chunk. Stylesheets are left out, as Nuxt can inline them in the HTML. -->
+        <span class="text-dimmed"> · {{ everyPage.length === 1 ? '1 JS request' : `${everyPage.length} JS requests` }}</span>
+      </span>
       <span class="text-sm text-highlighted">{{ formatBytes(everyPageSize) }}</span>
     </h3>
     <div class="px-4 py-3">
