@@ -56,6 +56,75 @@ function chunkName(chunk: ChunkInfo) {
 }
 // Largest first, so what takes the space comes first.
 const everyPageSorted = computed(() => [...everyPage.value].sort((a, b) => chunkSize(b) - chunkSize(a)))
+/** The chunks that import each chunk, statically or with `import()`. */
+const importersOf = computed(() => {
+  const byFile = new Map(props.chunks.map(chunk => [chunk.file, chunk]))
+  const importers = new Map<string, ChunkInfo[]>()
+  for (const chunk of props.chunks) {
+    for (const file of new Set([
+      ...chunk.imports,
+      ...chunk.dynamicImports ?? [],
+    ])) {
+      if (byFile.has(file)) {
+        importers.set(file, [
+          ...importers.get(file) ?? [],
+          chunk,
+        ])
+      }
+    }
+  }
+  return importers
+})
+
+function plural(count: number, noun: string) {
+  return `${count} ${noun}${count === 1
+    ? ''
+    : 's'}`
+}
+/** Who imports the chunk, by when they load, such as `46 loaded on every page and 75 lazy`. */
+function describeImporters(chunks: ChunkInfo[]) {
+  const every = chunks.filter(chunk => chunk.loadedBy === 'all').length
+  const lazy = chunks.filter(chunk => chunk.loadedBy === 'lazy').length
+  const pages = chunks.length - every - lazy
+  const parts = [
+    every && `${every} loaded on every page`,
+    pages && `${pages} loaded by some pages`,
+    lazy && `${lazy} lazy`,
+  ].filter(Boolean) as string[]
+  return parts.length > 1
+    ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`
+    : parts[0] ?? ''
+}
+/**
+ * Why the bundler gave a chunk every page loads a file of its own: chunks loaded only by some pages,
+ * or lazily, import it too, directly or through the chunks that do, so it can't stay inside the entry.
+ */
+function whyOwnChunk(chunk: ChunkInfo) {
+  const direct = importersOf.value.get(chunk.file) ?? []
+  if (chunk.kind === 'entry') {
+    return direct.length
+      ? `The app's entry, which starts every page. ${plural(direct.length, 'chunk')} import from it: ${describeImporters(direct)}.`
+      : 'The app\'s entry, which starts every page.'
+  }
+  if (direct.some(other => other.loadedBy !== 'all')) {
+    return `Its own chunk because ${plural(direct.length, 'chunk')} import it: ${describeImporters(direct)}.`
+  }
+  // Only chunks every page loads import it, so look further up for the ones that are not.
+  const reached = new Set<ChunkInfo>()
+  const stack = [...direct]
+  while (stack.length) {
+    const next = stack.pop()!
+    if (!reached.has(next)) {
+      reached.add(next)
+      stack.push(...importersOf.value.get(next.file) ?? [])
+    }
+  }
+  const others = [...reached].filter(other => other.loadedBy !== 'all')
+  return others.length
+    ? `Its own chunk because ${plural(others.length, 'lazy or page chunk')} reach it through the ${plural(direct.length, 'chunk')} loaded on every page that import it.`
+    : `${plural(direct.length, 'chunk')} loaded on every page import it.`
+}
+
 /** A large app loads dozens of chunks on every page, so the list starts with its largest. */
 const EVERY_PAGE_LIMIT = 10
 const showAllEveryPage = ref(false)
@@ -102,6 +171,9 @@ function pageSize(page: PageInfo) {
           </p>
         </button>
         <div v-if="expanded.has(chunk.file)" class="space-y-3 border-t border-default px-4 py-4 sm:ps-12">
+          <p class="text-xs text-muted">
+            {{ whyOwnChunk(chunk) }}
+          </p>
           <ChunkContents :parts="chunk.contents" :metric="metric" @inspect="target => emit('inspect', target)" />
           <div class="flex items-center justify-between gap-3 text-xs text-muted">
             <span>{{ chunk.css[metric] ? `Its size includes ${formatBytes(chunk.css[metric])} of CSS.` : '' }}</span>
