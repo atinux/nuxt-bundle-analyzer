@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SelectItem, TabsItem } from '@nuxt/ui'
 import type { Env, Metric, Run, RunData, Target } from '~/utils/data'
-import { clientChunks, fetchRun, fetchRuns, hostedBranch, hostedPull, pages, prerenderedPages, serverChunks } from '~/utils/data'
+import { clientChunks, fetchRun, fetchRuns, hostedBranch, hostedPull, isDuplicated, pages, prerenderedPages, serverChunks } from '~/utils/data'
 
 type View = 'history' | 'pages' | 'chunks' | 'issues' | 'prerendered' | 'compare'
 
@@ -321,9 +321,11 @@ const inspectedChunks = computed(() => inspectedData.value === data.value
 /** Issues in the build the Issues view shows, which keeps the build picked in another view. */
 const issueCount = computed(() => {
   const bundle = data.value?.bundles[state.env]
-  return bundle
-    ? bundle.duplicates.size + bundle.cycles.length
-    : 0
+  if (!bundle) {
+    return 0
+  }
+  const duplicates = Array.from(bundle.duplicates.values()).filter(isDuplicated)
+  return duplicates.length + bundle.cycles.length
 })
 const viewItems = computed<TabsItem[]>(() => [
   ...branch

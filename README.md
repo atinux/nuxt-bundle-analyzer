@@ -18,7 +18,7 @@ https://github.com/user-attachments/assets/db6b95b7-0e33-4a54-9a60-69192bb6becf
 - **Chunks:** every JavaScript file of the client and Nitro builds, with the files and dependencies in it. Browse them by chunk, by file, or as a 3D city.
 - **Why it's included:** pick any file or package to see its size, the chunks it's in, the chain of imports that leads to it, and what imports it.
 - **Duplicate packages:** packages bundled more than once, with each version, what imports it, and the size of the extra copies.
-- **Circular imports:** loops of imports, the ones through your own files first.
+- **Circular imports:** loops of imports through your own files.
 - **[Prerendered URLs](#prerendered-urls):** what the HTML of each prerendered page preloads, with the lazy-loaded components the page rendered on top of its route.
 - **Compare two builds:** the difference for each route, package, and file, as tables or as a 3D city colored by what changed.
 - **[Pull request comparisons](#comparisons-on-pull-requests):** GitHub Actions uploads both builds to a hosted viewer, so a bot comment can link to the comparison. The repository needs no secret.
