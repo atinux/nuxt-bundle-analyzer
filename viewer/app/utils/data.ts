@@ -69,7 +69,8 @@ export type ImportKind = 'import' | 'dynamic-import'
 
 /** What the detail panel shows: one source file, or a package with all its files. */
 export interface Target {
-  kind: 'file' | 'package'
+  /** A source file, a package, or an output chunk, whose `id` is then its file, such as `_nuxt/entry.js`. */
+  kind: 'file' | 'package' | 'chunk'
   id: string
   /** The chunk it was picked in, such as a page's: a package then shows only its files in that chunk. */
   chunk?: string

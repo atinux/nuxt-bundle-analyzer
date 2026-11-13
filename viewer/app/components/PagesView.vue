@@ -237,14 +237,14 @@ function pageSize(page: PageInfo) {
               Also Loaded Before It Renders
             </h4>
             <!-- With the page's chunk above, these add up to its size. -->
-            <ChunkList :chunks="page.loads" :metric="metric" :scale="pageSize(page)" @open-chunk="file => emit('openChunk', file)" />
+            <ChunkList :chunks="page.loads" :metric="metric" :scale="pageSize(page)" @open-chunk="file => emit('inspect', { kind: 'chunk', id: file })" />
           </section>
 
           <section v-if="page.lazy.length">
             <h4 class="mb-2 text-sm text-highlighted">
               Loaded on Demand
             </h4>
-            <ChunkList :chunks="page.lazy" :metric="metric" :scale="pageSize(page)" @open-chunk="file => emit('openChunk', file)" />
+            <ChunkList :chunks="page.lazy" :metric="metric" :scale="pageSize(page)" @open-chunk="file => emit('inspect', { kind: 'chunk', id: file })" />
           </section>
 
           <section v-if="urlsByPage.get(page.file)!.length">
@@ -254,7 +254,7 @@ function pageSize(page: PageInfo) {
             <p class="mt-1 mb-2 text-xs text-muted">
               What each URL's HTML preloads apart from the chunks every page loads: {{ page.initial ? `this page's ${formatBytes(pageSize(page)!)}` : 'its route' }}, plus the lazy-loaded components the page rendered, minus any route files the HTML doesn't load, such as stylesheets Nuxt inlines.
             </p>
-            <PrerenderedUrls :urls="urlsByPage.get(page.file)!" :shared="everyPageFiles" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+            <PrerenderedUrls :urls="urlsByPage.get(page.file)!" :shared="everyPageFiles" :metric="metric" @open-chunk="file => emit('inspect', { kind: 'chunk', id: file })" />
           </section>
         </div>
       </li>
@@ -271,7 +271,7 @@ function pageSize(page: PageInfo) {
     <p class="mt-1 mb-2 text-xs text-muted">
       Their HTML loads no page's chunk, such as an SPA shell or a page outside the app's routes.
     </p>
-    <PrerenderedUrls :urls="shownOtherUrls" :shared="everyPageFiles" :metric="metric" @open-chunk="file => emit('openChunk', file)" />
+    <PrerenderedUrls :urls="shownOtherUrls" :shared="everyPageFiles" :metric="metric" @open-chunk="file => emit('inspect', { kind: 'chunk', id: file })" />
   </section>
 
   <!-- Routes only count what their static imports reach, so the callout says how to measure what a rendered page loads. -->

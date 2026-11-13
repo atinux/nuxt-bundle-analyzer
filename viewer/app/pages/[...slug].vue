@@ -271,11 +271,16 @@ const inspected = computed<Target | undefined>(() => state.package
   ? { kind: 'package', id: state.package, chunk: state.chunk || undefined }
   : state.file
     ? { kind: 'file', id: state.file }
-    : undefined)
+    // Without a package, the chunk is the one the panel shows.
+    : state.chunk
+      ? { kind: 'chunk', id: state.chunk }
+      : undefined)
 function inspect(target: Target) {
   Object.assign(state, target.kind === 'package'
     ? { package: target.id, file: '', chunk: target.chunk ?? '' }
-    : { file: target.id, package: '', chunk: '' })
+    : target.kind === 'chunk'
+      ? { chunk: target.id, file: '', package: '' }
+      : { file: target.id, package: '', chunk: '' })
 }
 /**
  * The run the panel describes: the picked one, or in Compare the base run for what was removed.
