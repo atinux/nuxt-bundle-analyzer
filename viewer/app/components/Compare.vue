@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { TabsItem } from '@nuxt/ui'
 import type { ChunkInfo, Env, Metric, RunData, Source, Target } from '~/utils/data'
-import { clientChunks, formatBytes, formatDelta, locationChanges, pages, pagesDir, routeChanges, routeSize, serverChunks } from '~/utils/data'
+import { clientChunks, formatBytes, formatDelta, locationChanges, MIN_CHANGE, pageChanges, pages, pagesDir, prerenderedPages, routeChanges, routeSize, serverChunks } from '~/utils/data'
 
 const props = defineProps<{
   base: RunData
@@ -111,13 +111,63 @@ const pickedTable = ref<'routes' | 'packages'>('routes')
 const table = computed(() => allRoutes.value.length
   ? pickedTable.value
   : 'packages')
+/** Every prerendered URL of both runs, with the difference of its HTML, the largest difference first. */
+const allUrls = computed(() => {
+  if (props.env !== 'client') {
+    return []
+  }
+  const sizesOf = (data: RunData) => new Map(prerenderedPages(data, clientChunks(data)).map(page => [
+    page.url,
+    {
+      initial: page.initial[props.metric],
+      added: page.addedSize[props.metric],
+      html: page.html[props.metric],
+    },
+  ]))
+  const before = sizesOf(props.base)
+  const after = sizesOf(props.current)
+  return [
+    ...new Set([
+      ...before.keys(),
+      ...after.keys(),
+    ]),
+  ]
+    .map((url) => {
+      const row = toRow(url, before.get(url)?.initial, after.get(url)?.initial)
+      // The lazy-loaded components the page rendered, in each run; the rest of the initial load is from its route.
+      const added = {
+        base: before.get(url)?.added ?? 0,
+        current: after.get(url)?.added ?? 0,
+      }
+      const addedDelta = added.current - added.base
+      return {
+        ...row,
+        html: (after.get(url)?.html ?? 0) - (before.get(url)?.html ?? 0),
+        added,
+        addedDelta,
+        routeDelta: row.delta - addedDelta,
+        // Split the difference only when the page rendered components in either run.
+        split: added.base > 0 || added.current > 0,
+      }
+    })
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || Math.abs(b.html) - Math.abs(a.html))
+})
+const sides = ['base', 'current'] as const
+/** Added, removed, or changed by {@link MIN_CHANGE} or more, as the pull request comment counts it. */
+function isNotable(row: Row) {
+  return row.status === 'added' || row.status === 'removed' || Math.abs(row.delta) >= MIN_CHANGE
+}
+/** The URLs whose initial load or HTML changed and the search keeps. */
+const urls = computed(() => {
+  const query = props.search.trim().toLowerCase()
+  // A route part and a rendered part that cancel out, such as a component going from lazy to static, still count.
+  return allUrls.value.filter(row => (isNotable(row) || Math.abs(row.addedDelta) >= MIN_CHANGE || Math.abs(row.html) >= MIN_CHANGE) && (!query || row.key.toLowerCase().includes(query)))
+})
 
-/** The routes the search keeps: its path, or the page file that renders it. */
+/** The routes that changed and the search keeps: its path, or the page file that renders it. */
 const routes = computed(() => {
   const query = props.search.trim().toLowerCase()
-  return query
-    ? allRoutes.value.filter(row => [row.key, row.page].some(text => text?.toLowerCase().includes(query)))
-    : allRoutes.value
+  return allRoutes.value.filter(row => isNotable(row) && (!query || [row.key, row.page].some(text => text?.toLowerCase().includes(query))))
 })
 
 /** Every file or package that changed and the search keeps, the largest difference first. */
@@ -177,6 +227,12 @@ const routeDetails = computed(() => Object.fromEntries([...expanded.value]
   .map(key => [
     key.slice('route:'.length),
     routeChanges(props.base, props.current, key.slice('route:'.length), props.metric),
+  ])))
+const urlDetails = computed(() => Object.fromEntries([...expanded.value]
+  .filter(key => key.startsWith('url:'))
+  .map(key => [
+    key.slice('url:'.length),
+    pageChanges(props.base, props.current, key.slice('url:'.length), props.metric),
   ])))
 
 /** When each client chunk loads, from the current run, or the base one for a chunk it no longer has. */
@@ -289,7 +345,7 @@ function percent(delta: number, base: number) {
         Initial Load per Route
       </h3>
       <p class="text-sm text-muted">
-        JavaScript and CSS loaded before each route renders.
+        JavaScript and CSS loaded before each route renders, for the routes that changed by {{ formatBytes(MIN_CHANGE) }} or more.
       </p>
     </template>
     <!-- Phones keep the difference and leave both sizes to the details; anything wider still scrolls sideways. -->
@@ -374,7 +430,123 @@ function percent(delta: number, base: number) {
           </template>
           <tr v-if="!routes.length">
             <td colspan="4" class="px-4 py-6 text-center text-muted">
-              No routes match this search.
+              {{ search.trim() ? 'No changed route matches this search.' : 'No route changed.' }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </UCard>
+
+  <UCard v-if="show === 'tables' && (table === 'routes' || !allRoutes.length) && allUrls.length" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+    <template #header>
+      <h3 class="text-base text-highlighted">
+        Initial Load per Prerendered URL
+      </h3>
+      <p class="text-sm text-muted">
+        JavaScript and CSS each URL's prerendered HTML preloads, and the difference of the HTML itself, for the URLs whose initial load or HTML changed by {{ formatBytes(MIN_CHANGE) }} or more.
+      </p>
+    </template>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-muted">
+          <tr class="border-b border-default">
+            <th class="px-4 py-2 text-left font-medium">
+              URL
+            </th>
+            <th class="px-4 py-2 text-right font-medium max-sm:hidden">
+              {{ base.run.name }}
+            </th>
+            <th class="px-4 py-2 text-right font-medium max-sm:hidden">
+              {{ current.run.name }}
+            </th>
+            <th class="px-4 py-2 text-right font-medium">
+              Difference
+            </th>
+            <th class="px-4 py-2 text-right font-medium max-sm:hidden">
+              HTML
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <template v-for="row in urls" :key="row.key">
+            <tr class="cursor-pointer border-b border-default last:border-0" @click="toggle(`url:${row.key}`)">
+              <td class="px-4 py-2 align-top">
+                <div class="flex min-w-32 items-center gap-2">
+                  <UButton
+                    :icon="expanded.has(`url:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    :aria-expanded="expanded.has(`url:${row.key}`)"
+                    :aria-label="`Show where the difference of ${row.key} comes from`"
+                    @click.stop="toggle(`url:${row.key}`)"
+                  />
+                  <span class="min-w-0 font-mono text-xs break-all">{{ row.key }}</span>
+                </div>
+              </td>
+              <td v-for="side in sides" :key="side" class="px-4 py-2 text-right align-top whitespace-nowrap max-sm:hidden">
+                <template v-if="row[side] === undefined">
+                  —
+                </template>
+                <template v-else>
+                  {{ formatBytes(row[side]!) }}
+                  <!-- Adds up to the size, as in Pages: from its route, and what the rendered page adds, when it adds any. -->
+                  <p v-if="row.added[side]" class="text-xs">
+                    <span class="text-primary"><span class="sr-only">From its route </span>{{ formatBytes(row[side]! - row.added[side]) }}</span>
+                    <span class="text-muted"> + </span>
+                    <span class="text-warning"><span class="sr-only">added by the rendered page </span>{{ formatBytes(row.added[side]) }}</span>
+                  </p>
+                </template>
+              </td>
+              <td class="px-4 py-2 text-right align-top whitespace-nowrap">
+                <UBadge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New URL' : 'Removed'" color="neutral" variant="subtle" />
+                <template v-else>
+                  <span :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
+                  <!-- The dots name the colors of the sizes, as the headings of a URL in Pages do. -->
+                  <template v-if="row.split && (row.delta || row.addedDelta)">
+                    <p class="text-xs whitespace-normal text-muted">
+                      <span class="me-1.5 inline-block size-2 rounded-xs bg-primary" /><span><span :class="deltaClass(row.routeDelta)">{{ formatDelta(row.routeDelta) }}</span> from its route</span>
+                    </p>
+                    <p class="text-xs whitespace-normal text-muted">
+                      <span class="me-1.5 inline-block size-2 rounded-xs bg-warning" /><span><span :class="deltaClass(row.addedDelta)">{{ formatDelta(row.addedDelta) }}</span> added by the rendered page</span>
+                    </p>
+                  </template>
+                </template>
+                <!-- Phones have no HTML column, so the difference of the HTML goes under this one. -->
+                <span v-if="row.status === 'changed' || row.status === 'same'" class="block text-xs sm:hidden" :class="deltaClass(row.html)">HTML {{ formatDelta(row.html) }}</span>
+              </td>
+              <td class="px-4 py-2 text-right align-top whitespace-nowrap max-sm:hidden" :class="row.status === 'changed' || row.status === 'same' ? deltaClass(row.html) : 'text-muted'">
+                {{ row.status === 'changed' || row.status === 'same' ? formatDelta(row.html) : '—' }}
+              </td>
+            </tr>
+            <tr v-if="expanded.has(`url:${row.key}`)" class="border-b border-default bg-elevated/30 last:border-0">
+              <td colspan="5" class="px-4 py-4 sm:ps-13">
+                <div v-if="urlDetails[row.key]" class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <ChangeList
+                    title="Chunks It Loads"
+                    :changes="urlDetails[row.key]!.chunks"
+                    :base-name="base.run.name"
+                    :current-name="current.run.name"
+                    :notes="loadedBy"
+                    empty="The chunks it loads did not change."
+                  />
+                  <ChangeList
+                    title="Files and Packages in Them"
+                    :changes="urlDetails[row.key]!.sources"
+                    :base-name="base.run.name"
+                    :current-name="current.run.name"
+                    sources
+                    empty="No file or package in them changed."
+                    @inspect="target => emit('inspect', target)"
+                  />
+                </div>
+              </td>
+            </tr>
+          </template>
+          <tr v-if="!urls.length">
+            <td colspan="5" class="px-4 py-6 text-center text-muted">
+              {{ search.trim() ? 'No changed URL matches this search.' : 'No URL changed.' }}
             </td>
           </tr>
         </tbody>

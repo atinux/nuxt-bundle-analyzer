@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SelectItem, TabsItem } from '@nuxt/ui'
 import type { Env, Metric, Run, RunData, Target } from '~/utils/data'
-import { clientChunks, fetchRun, fetchRuns, hostedBranch, hostedPull, isDuplicated, pages, serverChunks } from '~/utils/data'
+import { clientChunks, fetchRun, fetchRuns, hostedBranch, hostedPull, isDuplicated, pages, prerenderedPages, serverChunks } from '~/utils/data'
 
 type View = 'history' | 'pages' | 'chunks' | 'issues' | 'compare'
 
@@ -48,6 +48,8 @@ function stateFromQuery() {
     /** The file or package the detail panel shows. */
     file: params.get('file') ?? '',
     package: params.get('package') ?? '',
+    /** The chunk the package was picked in, when the panel shows only its files there. */
+    chunk: params.get('chunk') ?? '',
   }
 }
 
@@ -241,8 +243,13 @@ function chunksOf(run: RunData | undefined, of: Env) {
     : []
 }
 const chunks = computed(() => chunksOf(data.value, env.value))
+const clientChunkList = computed(() => chunksOf(data.value, 'client'))
 const pageList = computed(() => data.value
-  ? pages(data.value, chunksOf(data.value, 'client'))
+  ? pages(data.value, clientChunkList.value)
+  : [])
+// Checked first, so a run without prerendered pages doesn't derive them.
+const prerenderedList = computed(() => data.value?.prerendered.length
+  ? prerenderedPages(data.value, clientChunkList.value)
   : [])
 
 const focusedChunk = ref<string>()
@@ -252,6 +259,7 @@ async function openChunk(file: string) {
     env: env.value,
     file: '',
     package: '',
+    chunk: '',
   })
   // Cleared first, so picking the same chunk again still scrolls to it.
   focusedChunk.value = undefined
@@ -260,14 +268,19 @@ async function openChunk(file: string) {
 }
 
 const inspected = computed<Target | undefined>(() => state.package
-  ? { kind: 'package', id: state.package }
+  ? { kind: 'package', id: state.package, chunk: state.chunk || undefined }
   : state.file
     ? { kind: 'file', id: state.file }
-    : undefined)
+    // Without a package, the chunk is the one the panel shows.
+    : state.chunk
+      ? { kind: 'chunk', id: state.chunk }
+      : undefined)
 function inspect(target: Target) {
   Object.assign(state, target.kind === 'package'
-    ? { package: target.id, file: '' }
-    : { file: target.id, package: '' })
+    ? { package: target.id, file: '', chunk: target.chunk ?? '' }
+    : target.kind === 'chunk'
+      ? { chunk: target.id, file: '', package: '' }
+      : { file: target.id, package: '', chunk: '' })
 }
 /**
  * The run the panel describes: the picked one, or in Compare the base run for what was removed.
@@ -459,6 +472,7 @@ const metricItems: TabsItem[] = [
             v-else-if="state.view === 'pages' && data"
             :pages="pageList"
             :chunks="chunks"
+            :prerendered="prerenderedList"
             :metric="state.metric"
             :search="state.search"
             @inspect="inspect"
@@ -528,7 +542,7 @@ const metricItems: TabsItem[] = [
       :other-run="inspectedData && inspectedData !== data ? inspectedData.run.name : undefined"
       @inspect="inspect"
       @open-chunk="openChunk"
-      @close="Object.assign(state, { file: '', package: '' })"
+      @close="Object.assign(state, { file: '', package: '', chunk: '' })"
     />
   </UApp>
 </template>

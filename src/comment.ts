@@ -3,13 +3,11 @@ import type { Env, NuxtData, Run, RunData, SondaReport } from '../viewer/app/uti
 import { promises as fsp } from 'node:fs'
 import { join } from 'pathe'
 
-import { formatBytes, formatDelta, routeSize, toRunData } from '../viewer/app/utils/data'
+import { clientChunks, formatBytes, formatDelta, MIN_CHANGE, prerenderedPages, routeSize, toRunData } from '../viewer/app/utils/data'
 
 /** Runs come from builds of a pull request's code, so a file this large is refused rather than parsed. */
 const MAX_FILE_SIZE = 64 * 1024 * 1024
 const MAX_ROWS = 10
-/** Two builds of the same code differ by a few bytes, such as the build ID, so smaller changes are left out. */
-const MIN_CHANGE = 100
 const MAX_NAME_LENGTH = 200
 /** Where the comment starts, so a workflow can find it again to update it. */
 export const COMMENT_MARKER = '<!-- nuxt-bundle-analyzer -->'
@@ -98,6 +96,15 @@ interface Row {
   delta: number
 }
 
+function toRow(key: string, base: number | undefined, current: number | undefined): Row {
+  return {
+    key,
+    base,
+    current,
+    delta: (current ?? 0) - (base ?? 0),
+  }
+}
+
 /** What changed, the largest changes first, leaving out what changed by less than {@link MIN_CHANGE}. */
 function changes(base: Map<string, number>, current: Map<string, number>): Row[] {
   return [
@@ -106,12 +113,7 @@ function changes(base: Map<string, number>, current: Map<string, number>): Row[]
       ...current.keys(),
     ]),
   ]
-    .map(key => ({
-      key,
-      base: base.get(key),
-      current: current.get(key),
-      delta: (current.get(key) ?? 0) - (base.get(key) ?? 0),
-    }))
+    .map(key => toRow(key, base.get(key), current.get(key)))
     .filter(row => Math.abs(row.delta) >= MIN_CHANGE || row.base === undefined || row.current === undefined)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.key.localeCompare(b.key))
 }
@@ -121,6 +123,25 @@ function routeSizes(data: RunData) {
     route.path,
     bytes(routeSize(data, route).brotli),
   ]))
+}
+
+/** What each prerendered URL's HTML preloads, the lazy-loaded components the page rendered in it, and the HTML itself. */
+function prerenderedSizes(data: RunData) {
+  const pages = prerenderedPages(data, clientChunks(data))
+  return {
+    initial: new Map(pages.map(page => [
+      page.url,
+      bytes(page.initial.brotli),
+    ])),
+    added: new Map(pages.map(page => [
+      page.url,
+      bytes(page.addedSize.brotli),
+    ])),
+    html: new Map(pages.map(page => [
+      page.url,
+      bytes(page.html.brotli),
+    ])),
+  }
 }
 
 /** The size of each package, and of each file outside one, in a build. */
@@ -141,7 +162,32 @@ function sizeCell(size: number | undefined) {
     : formatBytes(size)
 }
 
-function more(rows: Row[], noun: string) {
+function deltaCell(row: Row) {
+  return row.base === undefined
+    ? 'added'
+    : row.current === undefined
+      ? 'removed'
+      : row.delta === 0
+        ? formatDelta(0)
+        : `${formatDelta(row.delta)}${percent(row.base, row.current)}`
+}
+
+/** A URL's initial load, with what the lazy-loaded components the page rendered add to it. */
+function initialCell(initial: Row, added: Row) {
+  return added.current
+    ? `${sizeCell(initial.current)}<br><sub>${formatBytes(added.current)} from components</sub>`
+    : sizeCell(initial.current)
+}
+
+/** A URL's difference, split between its route and the components when either changed and the page rendered any. */
+function initialDeltaCell(initial: Row, added: Row) {
+  if (initial.base === undefined || initial.current === undefined || (initial.delta === 0 && added.delta === 0) || !(added.base || added.current)) {
+    return deltaCell(initial)
+  }
+  return `${deltaCell(initial)}<br><sub>route ${formatDelta(initial.delta - added.delta)}, components ${formatDelta(added.delta)}</sub>`
+}
+
+function more(rows: unknown[], noun: string) {
   return rows.length > MAX_ROWS
     ? ['', `And ${rows.length - MAX_ROWS} more ${noun}.`]
     : []
@@ -200,16 +246,46 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
       '',
       '| Initial page load | PR | Δ |',
       '| --- | ---: | ---: |',
-      ...routes.slice(0, MAX_ROWS).map(row => `| ${code(row.key)} | ${sizeCell(row.current)} | ${row.base === undefined
-        ? 'added'
-        : row.current === undefined
-          ? 'removed'
-          : `${formatDelta(row.delta)}${percent(row.base, row.current)}`} |`),
+      ...routes.slice(0, MAX_ROWS).map(row => `| ${code(row.key)} | ${sizeCell(row.current)} | ${deltaCell(row)} |`),
       ...more(routes, 'routes'),
     )
   }
   else if (current.routes.length > 0) {
     lines.push('', `No route loads ${formatBytes(MIN_CHANGE)} more or less before it renders.`)
+  }
+
+  const before = prerenderedSizes(base)
+  const after = prerenderedSizes(current)
+  const urls = [
+    // A base built without `--urls` has no URLs to compare with, so every URL would read as added.
+    ...new Set(base.prerendered.length === 0
+      ? []
+      : [
+          ...before.initial.keys(),
+          ...after.initial.keys(),
+        ]),
+  ]
+    .map(url => ({
+      initial: toRow(url, before.initial.get(url), after.initial.get(url)),
+      added: toRow(url, before.added.get(url), after.added.get(url)),
+      html: toRow(url, before.html.get(url), after.html.get(url)),
+    }))
+    // A route part and a rendered part that cancel out, such as a component going from lazy to static, still count.
+    .filter(({ initial, added, html }) => Math.abs(initial.delta) >= MIN_CHANGE || Math.abs(added.delta) >= MIN_CHANGE || Math.abs(html.delta) >= MIN_CHANGE || initial.base === undefined || initial.current === undefined)
+    .sort((a, b) => Math.abs(b.initial.delta) - Math.abs(a.initial.delta) || Math.abs(b.html.delta) - Math.abs(a.html.delta) || a.initial.key.localeCompare(b.initial.key))
+  if (urls.length > 0) {
+    lines.push(
+      '',
+      '| Prerendered URL | Initial load | Δ | HTML | Δ |',
+      '| --- | ---: | ---: | ---: | ---: |',
+      ...urls.slice(0, MAX_ROWS).map(({ initial, added, html }) => `| ${code(initial.key)} | ${initialCell(initial, added)} | ${initialDeltaCell(initial, added)} | ${sizeCell(html.current)} | ${deltaCell(html)} |`),
+      ...more(urls, 'prerendered URLs'),
+    )
+  }
+  else if (current.prerendered.length > 0) {
+    lines.push('', base.prerendered.length === 0
+      ? 'The base run has no prerendered URLs to compare with: build it with the same <code>--urls</code> too.'
+      : `No prerendered URL's initial load or HTML changes by ${formatBytes(MIN_CHANGE)} or more.`)
   }
 
   const client = changes(sourceSizes(base, 'client'), sourceSizes(current, 'client'))
@@ -225,6 +301,9 @@ export function renderComment(base: RunData, current: RunData, options: CommentO
     `Brotli sizes. Changes under ${formatBytes(MIN_CHANGE)} are left out of the tables.`,
     ...routes.length > 0
       ? ['Initial page load counts the JavaScript and CSS a route loads before it renders.']
+      : [],
+    ...urls.length > 0
+      ? ['Prerendered URLs count the JavaScript and CSS their HTML preloads (module scripts, modulepreload and stylesheets, not prefetch), and the HTML document. Components are the lazy-loaded components the page rendered: its HTML preloads them, but its route\'s static imports don\'t reach them.']
       : [],
     `Measured by <a href="https://github.com/atinux/nuxt-bundle-analyzer">nuxt-bundle-analyzer</a>${options.sha && SHA_RE.test(options.sha)
       ? ` for <code>${options.sha.slice(0, 7)}</code>`

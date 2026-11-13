@@ -69,8 +69,11 @@ export type ImportKind = 'import' | 'dynamic-import'
 
 /** What the detail panel shows: one source file, or a package with all its files. */
 export interface Target {
-  kind: 'file' | 'package'
+  /** A source file, a package, or an output chunk, whose `id` is then its file, such as `_nuxt/entry.js`. */
+  kind: 'file' | 'package' | 'chunk'
   id: string
+  /** The chunk it was picked in, such as a page's: a package then shows only its files in that chunk. */
+  chunk?: string
 }
 
 /** A client output file in `nuxt.json`, keyed by its path in the client bundle (for example `_nuxt/entry.js`). */
@@ -95,10 +98,22 @@ export interface Route {
   entries: string[]
 }
 
+/** An HTML page rendered with `--urls`, with the client files its HTML preloads. */
+export interface PrerenderedPage {
+  url: string
+  /** The HTML document. */
+  size: number
+  gzip: number
+  brotli: number
+  /** Client JS and CSS the HTML preloads, as `chunks` keys. */
+  files: string[]
+}
+
 export interface NuxtData {
   version: 1
   routes: Route[]
   chunks: Record<string, Chunk>
+  prerendered?: PrerenderedPage[]
 }
 
 /** A source file's share of a bundle, summed over the output files it ends up in. */
@@ -135,6 +150,7 @@ export interface RunData {
   bundles: Partial<Record<Env, Bundle>>
   routes: Route[]
   chunks: Record<string, Chunk>
+  prerendered: PrerenderedPage[]
 }
 
 const PACKAGE_RE = /^node_modules\/((?:@[^/]+\/)?[^/]+)/
@@ -453,6 +469,10 @@ export function toRunData(run: Run, reports: Partial<Record<Env, SondaReport>>, 
     bundles: {},
     routes: nuxt?.routes ?? [],
     chunks: nuxt?.chunks ?? {},
+    // Uploaded runs are only checked to be JSON, so malformed pages are left out here.
+    prerendered: Array.isArray(nuxt?.prerendered)
+      ? nuxt.prerendered.filter(page => typeof page?.url === 'string' && Array.isArray(page.files))
+      : [],
   }
   for (const env of ['client', 'nitro'] as const) {
     const report = reports[env]
@@ -525,7 +545,7 @@ export interface PageInfo {
   routes: string[]
   /** What its route loads before rendering, when the page is a route of its own. */
   initial?: Sizes
-  /** Other chunks its route loads before rendering, apart from those every route loads. */
+  /** Other chunks its route loads before rendering, apart from those the app's entry loads, which every page loads. */
   loads: ChunkInfo[]
   /** Chunks the page loads on demand, such as lazy components. */
   lazy: ChunkInfo[]
@@ -711,8 +731,27 @@ export function serverChunks(data: RunData): ChunkInfo[] {
   }).sort((a, b) => b.uncompressed - a.uncompressed)
 }
 
+/**
+ * The chunks every page loads because the app's entry imports them statically, the entry first.
+ * Not every chunk all routes share: an app with one route would list that route's page as well.
+ */
+export function appChunks(chunks: ChunkInfo[]): ChunkInfo[] {
+  const byFile = new Map(chunks.map(chunk => [chunk.file, chunk]))
+  const found = new Set<ChunkInfo>()
+  const stack = chunks.filter(chunk => chunk.kind === 'entry')
+  while (stack.length) {
+    const chunk = stack.pop()!
+    if (!found.has(chunk)) {
+      found.add(chunk)
+      stack.push(...chunk.imports.flatMap(file => byFile.get(file) ?? []))
+    }
+  }
+  return [...found]
+}
+
 /** Every page component, with the routes it renders and what they load. */
 export function pages(data: RunData, chunks: ChunkInfo[]): PageInfo[] {
+  const app = new Set(appChunks(chunks))
   return chunks.filter(chunk => chunk.kind === 'page').map((chunk) => {
     const routes = data.routes.filter(route => route.entries.includes(chunk.file))
     const own = routes.find(route => route.entries.at(-1) === chunk.file)
@@ -725,21 +764,150 @@ export function pages(data: RunData, chunks: ChunkInfo[]): PageInfo[] {
       route: own?.path,
       routes: routes.map(route => route.path),
       initial: own && routeSize(data, own),
-      loads: chunks.filter(other => other !== chunk && other.loadedBy !== 'all' && files.has(other.file)),
+      loads: chunks.filter(other => other !== chunk && !app.has(other) && files.has(other.file)),
       lazy: chunks.filter(other => chunk.dynamicImports.includes(other.file)),
     }
   }).sort((a, b) => a.file.localeCompare(b.file))
 }
 
-/** JavaScript and CSS loaded before a route renders, sized from the files on disk that `nuxt.json` records. */
-export function routeSize(data: RunData, route: Route): Sizes {
+function sumSizes(chunks: Chunk[]): Sizes {
   const sizes: Sizes = { uncompressed: 0, gzip: 0, brotli: 0 }
-  for (const chunk of routeFiles(data, route)) {
+  for (const chunk of chunks) {
     sizes.uncompressed += chunk.size
     sizes.gzip += chunk.gzip
     sizes.brotli += chunk.brotli
   }
   return sizes
+}
+
+/** JavaScript and CSS loaded before a route renders, sized from the files on disk that `nuxt.json` records. */
+export function routeSize(data: RunData, route: Route): Sizes {
+  return sumSizes(routeFiles(data, route))
+}
+
+/** The JavaScript and CSS a prerendered URL's HTML preloads, as far as the run's chunks know them. */
+function preloadedChunks(data: RunData, page: PrerenderedPage | undefined): Chunk[] {
+  const chunks = new Set<Chunk>()
+  for (const file of page?.files ?? []) {
+    const chunk = data.chunks[file]
+    if (chunk?.type === 'js' || chunk?.type === 'css') {
+      chunks.add(chunk)
+    }
+  }
+  return [...chunks]
+}
+
+/** A file a prerendered URL preloads: a JS chunk with those of its stylesheets the HTML preloads, or a stylesheet on its own. */
+export interface PreloadedFile extends Sizes {
+  file: string
+  /** The JS chunk, which a stylesheet on its own has none of. */
+  chunk?: ChunkInfo
+}
+
+export interface PrerenderedInfo {
+  url: string
+  /** The route whose page its HTML loads, unless none does, such as for an SPA shell. */
+  route?: Route
+  /** The chunk of that route's page. */
+  page?: ChunkInfo
+  /** The HTML document. */
+  html: Sizes
+  /** Every JS and CSS file its HTML preloads. */
+  initial: Sizes
+  /** What its route loads before rendering, as Pages shows it. */
+  routeInitial?: Sizes
+  /** Lazy-loaded components the page rendered: its HTML preloads them, but the route's static imports don't reach them. */
+  added: PreloadedFile[]
+  addedSize: Sizes
+  /** Files its route loads that its HTML doesn't preload. */
+  notLoaded: PreloadedFile[]
+  /** Every file its HTML preloads. */
+  files: PreloadedFile[]
+}
+
+/** Groups files as JS chunks, each with those of its stylesheets in the list, largest first. */
+function groupFiles(chunks: Chunk[], infos: Map<string, ChunkInfo>): PreloadedFile[] {
+  const listed = new Map(chunks.map(chunk => [chunk.file, chunk]))
+  const claimed = new Set<string>()
+  const files: PreloadedFile[] = []
+  for (const chunk of chunks) {
+    if (chunk.type !== 'js') {
+      continue
+    }
+    const css = chunk.css.filter(file => listed.has(file) && !claimed.has(file))
+    css.forEach(file => claimed.add(file))
+    files.push({
+      file: chunk.file,
+      chunk: infos.get(chunk.file),
+      ...sumSizes([
+        chunk,
+        ...css.map(file => listed.get(file)!),
+      ]),
+    })
+  }
+  for (const chunk of chunks) {
+    if (chunk.type === 'css' && !claimed.has(chunk.file)) {
+      files.push({
+        file: chunk.file,
+        ...sumSizes([chunk]),
+      })
+    }
+  }
+  return files.sort((a, b) => b.uncompressed - a.uncompressed)
+}
+
+/**
+ * The route a prerendered URL renders. Candidates are the routes whose own page chunk its HTML
+ * loads, and the one with the most of its entries in the HTML wins. Routes with the same entries,
+ * such as the copies i18n makes for each locale, go to the longest static prefix of the URL.
+ */
+function prerenderedRoute(data: RunData, page: PrerenderedPage, pageChunks: Set<string>): Route | undefined {
+  const files = new Set(page.files)
+  const present = (route: Route) => route.entries.filter(file => files.has(file)).length
+  const prefix = (route: Route) => {
+    const path = route.path.split(':')[0]!.replace(/\/+$/, '')
+    return path === '' || page.url === path || page.url.startsWith(`${path}/`)
+      ? path.length
+      : -1
+  }
+  return data.routes
+    .filter(route => pageChunks.has(route.entries.at(-1)!) && files.has(route.entries.at(-1)!))
+    .sort((a, b) => present(b) - present(a) || prefix(b) - prefix(a))[0]
+}
+
+/** Each prerendered URL, with the route it renders and what its HTML preloads over that route. */
+export function prerenderedPages(data: RunData, chunks: ChunkInfo[]): PrerenderedInfo[] {
+  const infos = new Map(chunks.map(chunk => [chunk.file, chunk]))
+  const pageChunks = new Set(chunks.filter(chunk => chunk.kind === 'page').map(chunk => chunk.file))
+  return data.prerendered.map((page) => {
+    const route = prerenderedRoute(data, page, pageChunks)
+    const preloaded = preloadedChunks(data, page)
+    const routeChunks = route
+      ? routeFiles(data, route)
+      : []
+    const inRoute = new Set(routeChunks)
+    const inHtml = new Set(preloaded)
+    const added = route
+      ? preloaded.filter(chunk => !inRoute.has(chunk))
+      : []
+    return {
+      url: page.url,
+      route,
+      page: route && infos.get(route.entries.at(-1)!),
+      html: {
+        uncompressed: Number(page.size) || 0,
+        gzip: Number(page.gzip) || 0,
+        brotli: Number(page.brotli) || 0,
+      },
+      initial: sumSizes(preloaded),
+      routeInitial: route && routeSize(data, route),
+      added: groupFiles(added, infos),
+      addedSize: sumSizes(added),
+      // Listed, so its route plus what it adds minus what it doesn't load is what its HTML preloads.
+      notLoaded: groupFiles(routeChunks.filter(chunk => !inHtml.has(chunk)), infos),
+      files: groupFiles(preloaded, infos),
+    }
+  })
 }
 
 /** A size in the base run and the current one, for one chunk, file or package. */
@@ -796,11 +964,23 @@ function sizeOf(chunk: Chunk, metric: Metric) {
  * the files and packages in them that changed, a package counted as a whole.
  */
 export function routeChanges(base: RunData, current: RunData, path: string, metric: Metric) {
-  const measure = (data: RunData) => {
+  return loadChanges(base, current, metric, (data) => {
     const route = data.routes.find(route => route.path === path)
-    const files = route
+    return route
       ? routeFiles(data, route)
       : []
+  })
+}
+
+/** Where a prerendered URL's difference comes from, as {@link routeChanges} tells it for a route. */
+export function pageChanges(base: RunData, current: RunData, url: string, metric: Metric) {
+  return loadChanges(base, current, metric, data => preloadedChunks(data, data.prerendered.find(page => page.url === url)))
+}
+
+/** The changes between the files each run loads, and between the files and packages in them. */
+function loadChanges(base: RunData, current: RunData, metric: Metric, filesOf: (data: RunData) => Chunk[]) {
+  const measure = (data: RunData) => {
+    const files = filesOf(data)
     const chunks = new Map(files.map(chunk => [
       chunk.file,
       sizeOf(chunk, metric),
@@ -840,6 +1020,9 @@ export function locationChanges(base: RunData, current: RunData, env: Env, targe
   }
   return changes(measure(base), measure(current))
 }
+
+/** Two builds of the same code differ by a few bytes, such as the build ID, so smaller changes of a route or a URL are left out. */
+export const MIN_CHANGE = 100
 
 export function formatBytes(bytes: number): string {
   const abs = Math.abs(bytes)

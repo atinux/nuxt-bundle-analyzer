@@ -58,4 +58,20 @@ jobs:
           for file in client.json nitro.json nuxt.json meta.json; do
             test -s "node_modules/.cache/nuxt-bundle-analyzer/ci/$file" || { echo "::error::The run has no $file."; exit 1; }
           done
-          node -e "const data = require('./node_modules/.cache/nuxt-bundle-analyzer/ci/nuxt.json'); if (!data.routes.length) { console.error('::error::nuxt.json lists no routes.'); process.exit(1) }"
+          node -e "const data = require('./node_modules/.cache/nuxt-bundle-analyzer/ci/nuxt.json'); if (!data.routes.length) { console.error('::error::nuxt.json lists no routes.'); process.exit(1) } if (data.prerendered) { console.error('::error::nuxt.json lists prerendered pages without --urls.'); process.exit(1) }"
+      # Renders only /chart and /stats, which `--urls` records.
+      - name: Analyze the playground with URLs
+        working-directory: playground
+        run: node ../dist/cli.mjs --name=prerender --no-serve --urls=/chart,/stats
+      # /chart renders the lazy HeavyChart on the server, so its HTML preloads the chunk its route's static imports don't reach.
+      - name: Check the prerendered pages
+        working-directory: playground
+        run: |
+          node -e "
+            const data = require('./node_modules/.cache/nuxt-bundle-analyzer/prerender/nuxt.json')
+            const urls = (data.prerendered ?? []).map(page => page.url).sort()
+            if (urls.join() !== '/chart,/stats') { console.error('::error::nuxt.json lists the prerendered pages ' + JSON.stringify(urls) + ', not /chart and /stats.'); process.exit(1) }
+            const chart = Object.keys(data.chunks).find(file => data.chunks[file].src?.endsWith('HeavyChart.vue'))
+            const files = url => data.prerendered.find(page => page.url === url).files
+            if (!chart || !files('/chart').includes(chart) || files('/stats').includes(chart)) { console.error('::error::The HeavyChart chunk should be in the files of /chart only.'); process.exit(1) }
+          "

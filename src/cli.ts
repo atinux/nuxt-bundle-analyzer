@@ -24,7 +24,8 @@ Commands:
 Options for analyze:
   --name <name>        Name of the run, to keep several and compare them (default: default)
   --no-serve           Write the reports without opening the analyzer
-  --prerender          Prerender routes while analyzing
+  --urls <urls>        Render these URLs, such as /,/blog/hello-world, and record what each
+                       one's HTML preloads (comma-separated, repeatable)
   --extends <layer>    Extend the app with a layer, as with nuxi (repeatable)
   --log-level <level>  silent, info or verbose
 
@@ -58,7 +59,9 @@ const { values, positionals } = parseArgs({
     'name': { type: 'string', default: 'default' },
     'serve': { type: 'boolean', default: true },
     'no-serve': { type: 'boolean' },
-    'prerender': { type: 'boolean', default: false },
+    'urls': { type: 'string', multiple: true, default: [] },
+    // Replaced by --urls, and only kept to say so.
+    'prerender': { type: 'boolean' },
     'extends': { type: 'string', multiple: true, default: [] },
     'log-level': { type: 'string' },
     'logLevel': { type: 'string' },
@@ -88,9 +91,21 @@ const command = COMMANDS.includes(positionals[0] ?? '')
   ? positionals.shift()!
   : 'analyze'
 const rootDir = resolve(positionals[0] ?? '.')
-// An option typed with an en or em dash, such as `—prerender`, arrives as the project directory.
+// An option typed with an en or em dash, such as `—urls`, arrives as the project directory.
 if (!existsSync(rootDir)) {
-  console.error(`There is no directory ${positionals[0]}. Options start with two hyphens, such as --prerender.`)
+  console.error(`There is no directory ${positionals[0]}. Options start with two hyphens, such as --urls.`)
+  process.exit(1)
+}
+if (values.prerender) {
+  console.error('--prerender was replaced by --urls, which renders only the URLs it lists, such as --urls=/,/blog/hello-world.')
+  process.exit(1)
+}
+const urls = [
+  ...new Set(values.urls.flatMap(list => list.split(',')).map(url => url.trim()).filter(Boolean)),
+]
+const relativeUrl = urls.find(url => !url.startsWith('/'))
+if (relativeUrl) {
+  console.error(`--urls takes paths that start with a slash, such as /${relativeUrl}.`)
   process.exit(1)
 }
 const runsDir = values.runs
@@ -131,25 +146,27 @@ async function analyze() {
       build: { analyze: false },
       modules: [bundleAnalyzer],
       bundleAnalyzer: { enabled: true, name: values.name },
-      ...(!values.prerender && {
-        nitro: {
-          prerender: {
-            routes: [],
-            crawlLinks: false,
-            ignore: [
-              () => true,
-            ],
-          },
+      // Only the URLs to measure are rendered: not the app's own prerender routes, the links they crawl, or the routes a module adds.
+      nitro: {
+        prerender: {
+          routes: urls,
+          crawlLinks: false,
+          ignore: [
+            (path: string) => !urls.includes(path),
+          ],
         },
-      }),
+      },
     } as Parameters<typeof kit.loadNuxt>[0]['overrides'],
   })
-  if (!values.prerender) {
-    // Prerendering runs the built app, and its output is not what is measured.
-    nuxt.hook('nitro:init', (nitro) => {
-      nitro.hooks.hook('prerender:routes', (routes: Set<string>) => routes.clear())
+  nuxt.hook('nitro:init', (nitro) => {
+    nitro.hooks.hook('prerender:routes', (routes: Set<string>) => {
+      for (const route of routes) {
+        if (!urls.includes(route)) {
+          routes.delete(route)
+        }
+      }
     })
-  }
+  })
   await nuxt.ready()
   await kit.buildNuxt(nuxt)
   await nuxt.close()
