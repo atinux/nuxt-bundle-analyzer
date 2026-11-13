@@ -34,8 +34,16 @@ function matches(part: Pick<Part, 'id' | 'package'>) {
     : part.id === shown.value?.id
 }
 
-const sources = computed(() => props.bundle?.sources.filter(matches) ?? [])
+/** The chunk a package was picked in, such as a page's, whose files of the package are the ones shown. */
+const scope = computed(() => shown.value?.kind === 'package' && shown.value.chunk
+  ? props.chunks.find(chunk => chunk.file === shown.value!.chunk)
+  : undefined)
+const sources = computed(() => scope.value
+  ? scope.value.contents.filter(matches)
+  : props.bundle?.sources.filter(matches) ?? [])
 const size = computed(() => sources.value.reduce((sum, source) => sum + source[props.metric], 0))
+const buildSize = computed(() => (props.bundle?.sources.filter(matches) ?? []).reduce((sum, source) => sum + source[props.metric], 0))
+const scopeName = computed(() => scope.value?.file.split('/').pop())
 
 const inChunks = computed(() => props.chunks
   .map(chunk => ({
@@ -108,7 +116,9 @@ const description = computed(() => {
     ? 'Client'
     : 'Nitro'
   if (shown.value.kind === 'package') {
-    return `Dependency · ${build}`
+    return scope.value
+      ? `Dependency · ${build} · In ${scopeName.value}`
+      : `Dependency · ${build}`
   }
   const kind = sourceKind({ id: shown.value.id, package: sources.value[0]?.package })
   const labels = {
@@ -134,14 +144,19 @@ const description = computed(() => {
 
       <div class="grid grid-cols-2 gap-3">
         <div class="rounded-lg px-4 py-3 ring ring-default">
-          <p class="text-xs text-muted">
-            Size in This Build
+          <p class="truncate text-xs text-muted">
+            {{ scope ? `Size in ${scopeName}` : 'Size in This Build' }}
           </p>
           <p class="text-xl font-semibold text-highlighted">
             {{ formatBytes(size) }}
           </p>
           <p class="text-xs text-muted">
-            {{ inChunks.length === 1 ? 'In 1 chunk' : `In ${inChunks.length} chunks` }}
+            <template v-if="scope">
+              {{ files.length === 1 ? '1 file' : `${files.length} files` }}, of {{ formatBytes(buildSize) }} in the build
+            </template>
+            <template v-else>
+              {{ inChunks.length === 1 ? 'In 1 chunk' : `In ${inChunks.length} chunks` }}
+            </template>
           </p>
         </div>
         <div v-if="loadedBy" class="rounded-lg px-4 py-3 ring ring-default">
@@ -153,6 +168,15 @@ const description = computed(() => {
           </p>
         </div>
       </div>
+
+      <!-- Picked in a chunk, such as a page's, so it matches the files and size listed there. -->
+      <p v-if="scope && shown" class="flex flex-wrap items-center gap-x-2 text-xs text-muted">
+        <span>Only its files in <span class="font-mono">{{ scopeName }}</span>.</span>
+        <button class="flex items-center gap-1 hover:text-primary" @click="emit('inspect', { kind: 'package', id: shown.id })">
+          Show it across the build
+          <UIcon name="i-lucide-arrow-right" class="size-3.5" />
+        </button>
+      </p>
 
       <section v-if="duplicates">
         <UAlert

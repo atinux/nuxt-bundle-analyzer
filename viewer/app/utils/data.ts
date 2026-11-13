@@ -71,6 +71,8 @@ export type ImportKind = 'import' | 'dynamic-import'
 export interface Target {
   kind: 'file' | 'package'
   id: string
+  /** The chunk it was picked in, such as a page's: a package then shows only its files in that chunk. */
+  chunk?: string
 }
 
 /** A client output file in `nuxt.json`, keyed by its path in the client bundle (for example `_nuxt/entry.js`). */

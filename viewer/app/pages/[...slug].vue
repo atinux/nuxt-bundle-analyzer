@@ -48,6 +48,8 @@ function stateFromQuery() {
     /** The file or package the detail panel shows. */
     file: params.get('file') ?? '',
     package: params.get('package') ?? '',
+    /** The chunk the package was picked in, when the panel shows only its files there. */
+    chunk: params.get('chunk') ?? '',
   }
 }
 
@@ -257,6 +259,7 @@ async function openChunk(file: string) {
     env: env.value,
     file: '',
     package: '',
+    chunk: '',
   })
   // Cleared first, so picking the same chunk again still scrolls to it.
   focusedChunk.value = undefined
@@ -265,14 +268,14 @@ async function openChunk(file: string) {
 }
 
 const inspected = computed<Target | undefined>(() => state.package
-  ? { kind: 'package', id: state.package }
+  ? { kind: 'package', id: state.package, chunk: state.chunk || undefined }
   : state.file
     ? { kind: 'file', id: state.file }
     : undefined)
 function inspect(target: Target) {
   Object.assign(state, target.kind === 'package'
-    ? { package: target.id, file: '' }
-    : { file: target.id, package: '' })
+    ? { package: target.id, file: '', chunk: target.chunk ?? '' }
+    : { file: target.id, package: '', chunk: '' })
 }
 /**
  * The run the panel describes: the picked one, or in Compare the base run for what was removed.
@@ -534,7 +537,7 @@ const metricItems: TabsItem[] = [
       :other-run="inspectedData && inspectedData !== data ? inspectedData.run.name : undefined"
       @inspect="inspect"
       @open-chunk="openChunk"
-      @close="Object.assign(state, { file: '', package: '' })"
+      @close="Object.assign(state, { file: '', package: '', chunk: '' })"
     />
   </UApp>
 </template>

@@ -193,7 +193,7 @@ function fileLoadedBy(file: FileRow) {
         </div>
       </button>
       <div v-if="expanded.has(chunk.file)" class="border-t border-default px-4 py-4 sm:ps-12">
-        <ChunkContents :parts="chunk.contents" :metric="metric" @inspect="target => emit('inspect', target)" />
+        <ChunkContents :parts="chunk.contents" :chunk="chunk.file" :metric="metric" @inspect="target => emit('inspect', target)" />
       </div>
     </li>
     <li v-if="shownChunks.length === 0" class="px-4 py-6 text-center text-sm text-muted">

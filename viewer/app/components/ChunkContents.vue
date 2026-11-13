@@ -7,6 +7,8 @@ const props = defineProps<{
   metric: Metric
   /** The size the bars measure against, such as the initial load of the page the chunk renders. Defaults to the chunk. */
   scale?: number
+  /** The chunk these are the contents of, so a package opens with only its files in it. */
+  chunk?: string
 }>()
 
 const emit = defineEmits<{
@@ -78,7 +80,7 @@ const share = (size: number) => `${Math.max(1, Math.round(size / total.value * 1
       <ul v-if="dependencies.length || generated" class="space-y-1.5">
         <li v-for="dependency in dependencies" :key="dependency.name">
           <div class="flex items-center justify-between gap-3 text-sm">
-            <button class="flex min-w-0 items-center gap-1.5 text-left font-mono text-xs hover:text-primary hover:underline" :title="`Show details of ${dependency.name}`" @click="emit('inspect', { kind: 'package', id: dependency.name })">
+            <button class="flex min-w-0 items-center gap-1.5 text-left font-mono text-xs hover:text-primary hover:underline" :title="`Show details of ${dependency.name}`" @click="emit('inspect', { kind: 'package', id: dependency.name, chunk })">
               <UIcon name="i-vscode-icons-file-type-npm" class="size-3.5 shrink-0" aria-hidden="true" />
               <span class="truncate">{{ dependency.name }}</span>
             </button>

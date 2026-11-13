@@ -176,7 +176,7 @@ function pageSize(page: PageInfo) {
           <p class="text-xs text-muted">
             {{ whyOwnChunk(chunk) }}
           </p>
-          <ChunkContents :parts="chunk.contents" :metric="metric" @inspect="target => emit('inspect', target)" />
+          <ChunkContents :parts="chunk.contents" :chunk="chunk.file" :metric="metric" @inspect="target => emit('inspect', target)" />
           <div class="flex items-center justify-between gap-3 text-xs text-muted">
             <span>{{ chunk.css[metric] ? `Its size includes ${formatBytes(chunk.css[metric])} of CSS.` : '' }}</span>
             <button class="flex shrink-0 items-center gap-1 hover:text-primary" @click="emit('openChunk', chunk.file)">
@@ -230,7 +230,7 @@ function pageSize(page: PageInfo) {
         </button>
 
         <div v-if="expanded.has(page.file)" class="space-y-6 border-t border-default px-4 py-4 sm:ps-12">
-          <ChunkContents :parts="page.chunk.contents" :metric="metric" :scale="pageSize(page)" @inspect="target => emit('inspect', target)" />
+          <ChunkContents :parts="page.chunk.contents" :chunk="page.chunk.file" :metric="metric" :scale="pageSize(page)" @inspect="target => emit('inspect', target)" />
 
           <section v-if="page.loads.length">
             <h4 class="mb-2 text-sm text-highlighted">
