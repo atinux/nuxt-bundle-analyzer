@@ -127,7 +127,7 @@ function whyOwnChunk(chunk: ChunkInfo) {
 }
 
 /** A large app loads dozens of chunks on every page, so the list starts with its largest. */
-const EVERY_PAGE_LIMIT = 10
+const EVERY_PAGE_LIMIT = 5
 const showAllEveryPage = ref(false)
 const everyPageShown = computed(() => showAllEveryPage.value
   ? everyPageSorted.value
@@ -188,7 +188,7 @@ function pageSize(page: PageInfo) {
       </li>
       <li v-if="everyPage.length > EVERY_PAGE_LIMIT">
         <button class="w-full px-4 py-2.5 text-center text-sm text-muted hover:bg-elevated/50 hover:text-primary" @click="showAllEveryPage = !showAllEveryPage">
-          {{ showAllEveryPage ? 'Show the 10 largest' : `Show all ${everyPage.length} files` }}
+          {{ showAllEveryPage ? `Show the ${EVERY_PAGE_LIMIT} largest` : `Show all ${everyPage.length} files` }}
         </button>
       </li>
     </ul>
