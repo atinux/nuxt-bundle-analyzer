@@ -154,8 +154,9 @@ function pageSize(page: PageInfo) {
     </h3>
     <ul class="divide-y divide-default">
       <li v-for="chunk in everyPageShown" :key="chunk.file">
-        <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(chunk.file)" @click="toggle(chunk.file)">
-          <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(chunk.file) }" />
+        <!-- The chevron, the name and the size share the first line; the second starts under the icon. -->
+        <button class="flex w-full items-start gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(chunk.file)" @click="toggle(chunk.file)">
+          <UIcon name="i-lucide-chevron-right" class="mt-0.5 size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(chunk.file) }" />
           <div class="min-w-0 flex-1">
             <!-- The file the browser requests. -->
             <p class="flex items-center gap-2 font-mono text-sm text-highlighted">
@@ -163,7 +164,7 @@ function pageSize(page: PageInfo) {
               <span class="truncate">{{ chunkName(chunk) }}</span>
             </p>
             <!-- Its share of what every page loads, so what takes the space stands out. -->
-            <div class="mt-1.5 ms-6 h-1 rounded-full bg-elevated">
+            <div class="mt-1.5 h-1 rounded-full bg-elevated">
               <div class="h-1 rounded-full bg-primary" :style="{ width: `${Math.max(1, Math.round(chunkSize(chunk) / (everyPageSize || 1) * 100))}%` }" />
             </div>
           </div>
@@ -201,24 +202,22 @@ function pageSize(page: PageInfo) {
     </div>
     <ul class="divide-y divide-default">
       <li v-for="page in shown" :key="page.file">
-        <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(page.file)" @click="toggle(page.file)">
-          <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(page.file) }" />
-          <!-- The icon sits beside both lines, centered on them. -->
-          <div class="flex min-w-0 flex-1 items-center gap-2">
-            <FileIcon :path="page.file" class="size-4" />
-            <div class="min-w-0">
-              <!-- Narrow screens leave out the pages directory every page shares, so the file name fits. -->
-              <p class="truncate font-mono text-sm text-highlighted">
-                <span class="max-sm:hidden">{{ pagesDir(page.file) }}</span>{{ page.file.slice(pagesDir(page.file).length) }}
-              </p>
-              <p class="truncate text-xs text-muted">
-                <span v-if="page.route" class="font-mono">{{ page.route }}</span>
-                <template v-else>
-                  Parent of <span class="font-mono">{{ page.routes.join(', ') }}</span>
-                </template>
-                <span v-if="urlsByPage.get(page.file)!.length" class="text-primary"> · {{ urlsByPage.get(page.file)!.length === 1 ? '1 prerendered URL' : `${urlsByPage.get(page.file)!.length} prerendered URLs` }}</span>
-              </p>
-            </div>
+        <!-- The chevron, the file and the size share the first line; the second starts under the icon. -->
+        <button class="flex w-full items-start gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(page.file)" @click="toggle(page.file)">
+          <UIcon name="i-lucide-chevron-right" class="mt-0.5 size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(page.file) }" />
+          <div class="min-w-0 flex-1">
+            <!-- Narrow screens leave out the pages directory every page shares, so the file name fits. -->
+            <p class="flex items-center gap-2 font-mono text-sm text-highlighted">
+              <FileIcon :path="page.file" class="size-4" />
+              <span class="truncate"><span class="max-sm:hidden">{{ pagesDir(page.file) }}</span>{{ page.file.slice(pagesDir(page.file).length) }}</span>
+            </p>
+            <p class="mt-0.5 truncate text-xs text-muted">
+              <span v-if="page.route" class="font-mono">{{ page.route }}</span>
+              <template v-else>
+                Parent of <span class="font-mono">{{ page.routes.join(', ') }}</span>
+              </template>
+              <span v-if="urlsByPage.get(page.file)!.length" class="text-primary"> · {{ urlsByPage.get(page.file)!.length === 1 ? '1 prerendered URL' : `${urlsByPage.get(page.file)!.length} prerendered URLs` }}</span>
+            </p>
           </div>
           <div class="w-32 shrink-0 text-right">
             <p v-if="page.initial" class="text-sm text-highlighted">
