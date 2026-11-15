@@ -39,7 +39,7 @@ const cycles = computed(() => props.bundle.cycles.filter(matches).sort((a, b) =>
 </script>
 
 <template>
-  <UCard :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+  <Card>
     <template #header>
       <h3 class="text-base text-highlighted">
         Duplicate Packages
@@ -52,7 +52,7 @@ const cycles = computed(() => props.bundle.cycles.filter(matches).sort((a, b) =>
       <li v-for="duplicate in duplicates" :key="duplicate.name" class="space-y-3 px-4 py-3">
         <div class="flex items-center justify-between gap-3">
           <button class="flex min-w-0 items-center gap-2 text-left font-mono text-sm text-highlighted hover:text-primary hover:underline" :title="`Show details of ${duplicate.name}`" @click="emit('inspect', { kind: 'package', id: duplicate.name })">
-            <UIcon name="i-vscode-icons-file-type-npm" class="size-4 shrink-0" aria-hidden="true" />
+            <Icon name="i-vscode-icons-file-type-npm" class="size-4 shrink-0" aria-hidden="true" />
             <span class="truncate">{{ duplicate.name }}</span>
           </button>
           <span class="shrink-0 text-sm text-muted">
@@ -65,9 +65,9 @@ const cycles = computed(() => props.bundle.cycles.filter(matches).sort((a, b) =>
     <p v-else class="px-4 py-6 text-center text-sm text-muted">
       {{ query ? 'No duplicate package matches this search.' : 'No package is bundled more than once.' }}
     </p>
-  </UCard>
+  </Card>
 
-  <UCard :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+  <Card>
     <template #header>
       <h3 class="text-base text-highlighted">
         Circular Imports
@@ -80,7 +80,7 @@ const cycles = computed(() => props.bundle.cycles.filter(matches).sort((a, b) =>
       <li v-for="cycle in cycles" :key="cycle.join()" class="px-4 py-3">
         <ol class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
           <li v-for="(id, index) in [...cycle, cycle[0]!]" :key="index" class="flex min-w-0 items-center gap-1.5">
-            <UIcon v-if="index > 0" :name="index === cycle.length ? 'i-lucide-repeat' : 'i-lucide-arrow-right'" class="size-3.5 shrink-0 text-muted" aria-hidden="true" />
+            <Icon v-if="index > 0" :name="index === cycle.length ? 'i-lucide-repeat' : 'i-lucide-arrow-right'" class="size-3.5 shrink-0 text-muted" aria-hidden="true" />
             <button class="flex min-w-0 items-center gap-1.5 text-left font-mono hover:text-primary hover:underline" :class="{ 'text-muted': index === cycle.length }" :title="`Show details of ${id}`" @click="emit('inspect', { kind: 'file', id })">
               <FileIcon :path="id" class="size-3.5" />
               <span class="break-all">{{ id }}</span>
@@ -92,5 +92,5 @@ const cycles = computed(() => props.bundle.cycles.filter(matches).sort((a, b) =>
     <p v-else class="px-4 py-6 text-center text-sm text-muted">
       {{ query ? 'No circular import matches this search.' : 'None of your files import each other in a loop.' }}
     </p>
-  </UCard>
+  </Card>
 </template>

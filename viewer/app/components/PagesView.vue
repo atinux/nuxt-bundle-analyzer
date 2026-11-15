@@ -156,7 +156,7 @@ function pageSize(page: PageInfo) {
       <li v-for="chunk in everyPageShown" :key="chunk.file">
         <!-- The chevron, the name and the size share the first line; the second starts under the icon. -->
         <button class="flex w-full items-start gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(chunk.file)" @click="toggle(chunk.file)">
-          <UIcon name="i-lucide-chevron-right" class="mt-0.5 size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(chunk.file) }" />
+          <Icon name="i-lucide-chevron-right" class="mt-0.5 size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(chunk.file) }" />
           <div class="min-w-0 flex-1">
             <!-- The file the browser requests. -->
             <p class="flex items-center gap-2 font-mono text-sm text-highlighted">
@@ -181,7 +181,7 @@ function pageSize(page: PageInfo) {
             <span>{{ chunk.css[metric] ? `Its size includes ${formatBytes(chunk.css[metric])} of CSS.` : '' }}</span>
             <button class="flex shrink-0 items-center gap-1 hover:text-primary" @click="emit('openChunk', chunk.file)">
               Show in Chunks
-              <UIcon name="i-lucide-arrow-right" class="size-3.5" />
+              <Icon name="i-lucide-arrow-right" class="size-3.5" />
             </button>
           </div>
         </div>
@@ -204,7 +204,7 @@ function pageSize(page: PageInfo) {
       <li v-for="page in shown" :key="page.file">
         <!-- The chevron, the file and the size share the first line; the second starts under the icon. -->
         <button class="flex w-full items-start gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(page.file)" @click="toggle(page.file)">
-          <UIcon name="i-lucide-chevron-right" class="mt-0.5 size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(page.file) }" />
+          <Icon name="i-lucide-chevron-right" class="mt-0.5 size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(page.file) }" />
           <div class="min-w-0 flex-1">
             <!-- Narrow screens leave out the pages directory every page shares, so the file name fits. -->
             <p class="flex items-center gap-2 font-mono text-sm text-highlighted">
@@ -275,16 +275,14 @@ function pageSize(page: PageInfo) {
   </section>
 
   <!-- Routes only count what their static imports reach, so the callout says how to measure what a rendered page loads. -->
-  <UAlert
+  <Callout
     v-if="!prerendered.length"
     icon="i-lucide-server"
-    color="neutral"
-    variant="subtle"
     title="Measure what a page loads when it's rendered"
   >
     <template #description>
       A page's initial load counts what its route imports statically, not the lazy components it renders on the server. Pass the URLs to render, and each page here lists them with their HTML size and the chunks their HTML preloads:
       <code class="mt-2 block font-mono text-xs text-highlighted">npx nuxt-bundle-analyzer --urls=/,/blog/hello-world</code>
     </template>
-  </UAlert>
+  </Callout>
 </template>

@@ -24,5 +24,5 @@ const icon = computed(() => icons[props.path.split('?')[0]!.split('.').pop()!.to
 </script>
 
 <template>
-  <UIcon :name="icon" class="shrink-0" aria-hidden="true" />
+  <Icon :name="icon" class="shrink-0" aria-hidden="true" />
 </template>

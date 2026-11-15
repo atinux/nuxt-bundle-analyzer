@@ -35,22 +35,30 @@ async function copy(text: string) {
 
 <template>
   <div class="mx-auto w-full max-w-3xl py-8 sm:py-14">
-    <UBadge label="Experimental" color="neutral" variant="subtle" />
-    <h2 class="mt-4 text-3xl font-semibold text-balance text-highlighted sm:text-4xl">
+    <Badge label="Experimental" color="primary" />
+    <h2 class="neon-text mt-4 text-3xl text-balance uppercase sm:text-5xl">
       See What Your Nuxt App Ships
     </h2>
     <p class="mt-3 text-lg text-pretty text-muted">
       Each page with the code it loads before it renders, the chunks your files and dependencies end up in, and how a change or a pull request moves them.
     </p>
     <div class="mt-6 flex flex-wrap gap-3">
-      <UButton :to="DEMO" label="Open a Real Comparison" trailing-icon="i-lucide-arrow-right" />
-      <UButton :to="REPOSITORY" target="_blank" label="GitHub" icon="i-lucide-github" color="neutral" variant="outline" />
+      <Button data-variant="solid">
+        <template #render="{ props }">
+          <a v-bind="props" :href="DEMO">Open a Real Comparison <Icon name="i-lucide-arrow-right" class="size-4" aria-hidden="true" /></a>
+        </template>
+      </Button>
+      <Button>
+        <template #render="{ props }">
+          <a v-bind="props" :href="REPOSITORY" target="_blank"><Icon name="i-lucide-github" class="size-4" aria-hidden="true" /> GitHub</a>
+        </template>
+      </Button>
     </div>
 
     <ol class="mt-12 space-y-8">
       <!-- On phones the text and commands take the full width below the step's number and title. -->
       <li v-for="(step, index) in steps" :key="step.title" class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 sm:gap-x-4">
-        <span class="flex size-7 items-center justify-center rounded-full bg-elevated text-sm font-medium text-highlighted ring ring-default">
+        <span class="flex size-7 items-center justify-center border border-secondary/70 font-mono text-sm text-secondary shadow-[0_0_12px_-2px_var(--neon-cyan)]">
           {{ index + 1 }}
         </span>
         <h3 class="text-base font-medium text-highlighted">
@@ -60,18 +68,21 @@ async function copy(text: string) {
           <p class="mt-1 text-sm text-pretty text-muted">
             {{ step.description }}
           </p>
-          <div v-for="command in step.commands" :key="command" class="mt-2 flex items-center gap-2 rounded-md bg-elevated/60 py-1 ps-3 pe-1 ring ring-default">
+          <div v-for="command in step.commands" :key="command" class="mt-2 flex items-center gap-2 border border-default bg-muted py-1 ps-3 pe-1">
             <code class="min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap text-highlighted sm:text-sm">{{ command }}</code>
-            <UButton
-              :icon="copied === command ? 'i-lucide-check' : 'i-lucide-copy'"
+            <Button
               :aria-label="copied === command ? 'Copied' : `Copy ${command}`"
-              color="neutral"
-              variant="ghost"
-              size="xs"
+              data-variant="ghost"
+              class="size-7 p-0"
               @click="copy(command)"
-            />
+            >
+              <Icon :name="copied === command ? 'i-lucide-check' : 'i-lucide-copy'" class="size-4" aria-hidden="true" />
+            </Button>
           </div>
-          <UButton v-if="step.link" :to="step.link.to" target="_blank" :label="step.link.label" trailing-icon="i-lucide-arrow-up-right" color="neutral" variant="link" class="mt-1 px-0" />
+          <NuxtLink v-if="step.link" :to="step.link.to" target="_blank" class="mt-2 inline-flex items-center gap-1 font-heading text-sm tracking-wide text-secondary uppercase hover:underline">
+            {{ step.link.label }}
+            <Icon name="i-lucide-arrow-up-right" class="size-4" aria-hidden="true" />
+          </NuxtLink>
         </div>
       </li>
     </ol>

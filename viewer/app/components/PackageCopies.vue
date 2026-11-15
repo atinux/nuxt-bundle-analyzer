@@ -37,7 +37,7 @@ const importers = computed(() => new Map(props.copies.map((copy) => {
     <li v-for="copy in copies" :key="copy.path">
       <div class="flex items-center justify-between gap-3 text-sm">
         <span class="flex min-w-0 items-center gap-2">
-          <UBadge v-if="copy.version" :label="copy.version" color="neutral" variant="subtle" size="sm" class="shrink-0 font-mono" />
+          <Badge v-if="copy.version" :label="copy.version" class="shrink-0 font-mono" />
           <span class="truncate font-mono text-xs text-muted" :title="copy.path">{{ copy.path }}</span>
         </span>
         <!-- A copy can be imported and still have none of its code in the output, as tree-shaking removed it. -->

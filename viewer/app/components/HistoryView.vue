@@ -198,7 +198,7 @@ function date(run: Run) {
     </div>
   </div>
 
-  <UCard v-if="sized.length > 1" :ui="{ header: 'py-3 sm:px-4 flex items-start justify-between gap-2', body: 'sm:px-4' }">
+  <Card v-if="sized.length > 1" header-class="flex items-start justify-between gap-2" body-class="p-4">
     <template #header>
       <div>
         <h3 class="text-base text-highlighted">
@@ -208,30 +208,24 @@ function date(run: Run) {
           {{ byPackage ? `Every output file of the build after each commit, with its ${shownPackages.length} largest packages.` : 'Every output file of the build, after each commit.' }} Click a commit to see what it changed.
         </p>
       </div>
-      <UTabs
+      <Segmented
         v-if="hasPackages"
         v-model="breakdown"
+        aria-label="Breakdown"
         :items="[{ label: 'By Package', value: 'packages' }, { label: 'Total', value: 'total' }]"
-        :content="false"
-        size="xs"
         class="shrink-0"
       />
     </template>
-    <!-- Above the header, which stays sticky over the body at `z-10`: the tooltip is rendered inside
-         the chart, so lifting the chart is what shows the tooltip over the header. -->
-    <UChart
+    <Chart
       :key="byPackage ? 'packages' : 'total'"
       :type="byPackage ? 'bar' : 'line'"
-      :stacked="byPackage"
       :data="chartData"
       index="commit"
       :categories="categories"
       :format="formatBytes"
-      :ui="{ root: 'z-20' }"
-      :x-axis="false"
       :points="!byPackage && sized.length <= 60"
       :height="byPackage ? 320 : 240"
-      :aria-label="byPackage ? `${envLabel} bundle size per commit, by package` : `${envLabel} bundle size per commit`"
+      :label="byPackage ? `${envLabel} bundle size per commit, by package` : `${envLabel} bundle size per commit`"
       class="cursor-pointer"
       @focus-change="onFocus"
       @select="onSelect"
@@ -263,19 +257,18 @@ function date(run: Run) {
           </template>
         </div>
       </template>
-    </UChart>
-  </UCard>
+    </Chart>
+  </Card>
 
-  <UCard :ui="{ header: 'py-3 sm:px-4 flex items-center justify-between gap-2', body: 'p-0 sm:p-0' }">
+  <Card header-class="flex items-center justify-between gap-2">
     <template #header>
       <h3 class="text-base text-highlighted">
         Commits
       </h3>
-      <UTabs
+      <Segmented
         v-model="order"
+        aria-label="Order"
         :items="[{ label: 'Newest', value: 'newest' }, { label: 'Largest Change', value: 'change' }]"
-        :content="false"
-        size="xs"
       />
     </template>
     <div class="overflow-x-auto">
@@ -298,9 +291,9 @@ function date(run: Run) {
             <!-- The message takes the room left and truncates, so phones keep the change in view. -->
             <td class="w-full max-w-0 px-4 py-2">
               <div class="flex items-center gap-2">
-                <ULink :to="commitUrl(row.sha)" target="_blank" class="shrink-0 font-mono text-xs text-muted hover:text-highlighted" :aria-label="`Commit ${row.short} on GitHub`">
+                <NuxtLink :to="commitUrl(row.sha)" target="_blank" class="shrink-0 font-mono text-xs text-muted hover:text-secondary" :aria-label="`Commit ${row.short} on GitHub`">
                   {{ row.short }}
-                </ULink>
+                </NuxtLink>
                 <span class="min-w-0 flex-1 truncate" :title="row.message">{{ row.message || '—' }}</span>
                 <span class="shrink-0 text-xs text-muted max-md:hidden">{{ date(row.run) }}</span>
               </div>
@@ -329,5 +322,5 @@ function date(run: Run) {
         </tbody>
       </table>
     </div>
-  </UCard>
+  </Card>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TabsItem } from '@nuxt/ui'
+import type { SegmentedItem } from '~/components/Segmented.vue'
 import type { ChunkInfo, Env, Metric, RunData, Source, Target } from '~/utils/data'
 import { clientChunks, formatBytes, formatDelta, locationChanges, MIN_CHANGE, pageChanges, pages, pagesDir, prerenderedPages, routeChanges, routeSize, serverChunks } from '~/utils/data'
 
@@ -208,7 +208,7 @@ const changes = computed<Row[]>(() => {
 const rows = computed(() => changes.value.slice(0, 500))
 
 /** The tables to pick, with how many rows the search keeps in each. */
-const tableItems = computed<TabsItem[]>(() => [
+const tableItems = computed<SegmentedItem<'routes' | 'packages'>[]>(() => [
   { label: 'Routes', value: 'routes', badge: routes.value.length },
   { label: 'Packages', value: 'packages', badge: changes.value.length },
 ])
@@ -308,23 +308,21 @@ function percent(delta: number, base: number) {
   </div>
 
   <div class="flex items-center justify-between gap-3">
-    <UTabs
+    <Segmented
       v-if="show === 'tables' && allRoutes.length"
       v-model="pickedTable"
+      aria-label="Table"
       :items="tableItems"
-      :content="false"
-      size="xs"
     />
     <p v-else class="text-sm text-muted">
       {{ show === 'tables'
         ? 'Where the difference is, by package or module.'
         : `The chunks of ${current.run.name}, each file or package colored by how it changed since ${base.run.name}. Drag to turn, scroll to zoom.` }}
     </p>
-    <UTabs
+    <Segmented
       v-model="show"
+      aria-label="Show as"
       :items="[{ label: 'Tables', value: 'tables' }, { label: '3D', value: 'city' }]"
-      :content="false"
-      size="xs"
     />
   </div>
 
@@ -339,7 +337,7 @@ function percent(delta: number, base: number) {
     @open-chunk="file => emit('openChunk', file)"
   />
 
-  <UCard v-if="show === 'tables' && table === 'routes'" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+  <Card v-if="show === 'tables' && table === 'routes'">
     <template #header>
       <h3 class="text-base text-highlighted">
         Initial Load per Route
@@ -373,15 +371,15 @@ function percent(delta: number, base: number) {
             <tr class="cursor-pointer border-b border-default last:border-0" @click="toggle(`route:${row.key}`)">
               <td class="px-4 py-2">
                 <div class="flex min-w-32 items-center gap-2">
-                  <UButton
-                    :icon="expanded.has(`route:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
+                  <Button
+                    data-variant="ghost"
+                    class="size-6 shrink-0 p-0"
                     :aria-expanded="expanded.has(`route:${row.key}`)"
                     :aria-label="`Show where the difference of ${row.key} comes from`"
                     @click.stop="toggle(`route:${row.key}`)"
-                  />
+                  >
+                    <Icon :name="expanded.has(`route:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="size-4" aria-hidden="true" />
+                  </Button>
                   <span class="min-w-0">
                     <span class="block font-mono text-xs break-all">{{ row.key }}</span>
                     <!-- The page it renders opens its details, as the name of a package does. -->
@@ -400,7 +398,7 @@ function percent(delta: number, base: number) {
                 {{ row.current === undefined ? '—' : formatBytes(row.current) }}
               </td>
               <td class="px-4 py-2 text-right whitespace-nowrap">
-                <UBadge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New Route' : 'Removed'" color="neutral" variant="subtle" />
+                <Badge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New Route' : 'Removed'" />
                 <span v-else :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
               </td>
             </tr>
@@ -436,9 +434,9 @@ function percent(delta: number, base: number) {
         </tbody>
       </table>
     </div>
-  </UCard>
+  </Card>
 
-  <UCard v-if="show === 'tables' && (table === 'routes' || !allRoutes.length) && allUrls.length" :ui="{ header: 'py-3 sm:px-4', body: 'p-0 sm:p-0' }">
+  <Card v-if="show === 'tables' && (table === 'routes' || !allRoutes.length) && allUrls.length">
     <template #header>
       <h3 class="text-base text-highlighted">
         Initial Load per Prerendered URL
@@ -473,15 +471,15 @@ function percent(delta: number, base: number) {
             <tr class="cursor-pointer border-b border-default last:border-0" @click="toggle(`url:${row.key}`)">
               <td class="px-4 py-2 align-top">
                 <div class="flex min-w-32 items-center gap-2">
-                  <UButton
-                    :icon="expanded.has(`url:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
+                  <Button
+                    data-variant="ghost"
+                    class="size-6 shrink-0 p-0"
                     :aria-expanded="expanded.has(`url:${row.key}`)"
                     :aria-label="`Show where the difference of ${row.key} comes from`"
                     @click.stop="toggle(`url:${row.key}`)"
-                  />
+                  >
+                    <Icon :name="expanded.has(`url:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="size-4" aria-hidden="true" />
+                  </Button>
                   <span class="min-w-0 font-mono text-xs break-all">{{ row.key }}</span>
                 </div>
               </td>
@@ -500,7 +498,7 @@ function percent(delta: number, base: number) {
                 </template>
               </td>
               <td class="px-4 py-2 text-right align-top whitespace-nowrap">
-                <UBadge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New URL' : 'Removed'" color="neutral" variant="subtle" />
+                <Badge v-if="row.status === 'added' || row.status === 'removed'" :label="row.status === 'added' ? 'New URL' : 'Removed'" />
                 <template v-else>
                   <span :class="deltaClass(row.delta)">{{ formatDelta(row.delta) }}{{ percent(row.delta, row.base ?? 0) }}</span>
                   <!-- The dots name the colors of the sizes, as the headings of a URL in Pages do. -->
@@ -552,18 +550,17 @@ function percent(delta: number, base: number) {
         </tbody>
       </table>
     </div>
-  </UCard>
+  </Card>
 
-  <UCard v-if="show === 'tables' && table === 'packages'" :ui="{ header: 'py-3 sm:px-4 flex items-center justify-between gap-2', body: 'p-0 sm:p-0' }">
+  <Card v-if="show === 'tables' && table === 'packages'" header-class="flex items-center justify-between gap-2">
     <template #header>
       <h3 class="text-base text-highlighted">
         Changed {{ groupBy === 'package' ? 'Packages and Modules' : 'Modules' }}
       </h3>
-      <UTabs
+      <Segmented
         v-model="groupBy"
+        aria-label="Group"
         :items="[{ label: 'Group Packages', value: 'package' }, { label: 'Every Module', value: 'module' }]"
-        :content="false"
-        size="xs"
       />
     </template>
     <!-- Phones keep the difference and leave both sizes to the details; anything wider still scrolls sideways. -->
@@ -591,24 +588,24 @@ function percent(delta: number, base: number) {
               <td class="px-4 py-2">
                 <!-- The path keeps room to read, and narrow screens scroll the table instead of squeezing it. -->
                 <div class="flex min-w-48 items-center gap-2">
-                  <UButton
+                  <Button
                     v-if="row.target"
-                    :icon="expanded.has(`row:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
+                    data-variant="ghost"
+                    class="size-6 shrink-0 p-0"
                     :aria-expanded="expanded.has(`row:${row.key}`)"
                     :aria-label="`Show where the difference of ${row.key} comes from`"
                     @click="toggle(`row:${row.key}`)"
-                  />
+                  >
+                    <Icon :name="expanded.has(`row:${row.key}`) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="size-4" aria-hidden="true" />
+                  </Button>
                   <span v-else class="w-6 shrink-0" />
                   <span class="min-w-0">
                     <button v-if="row.target" class="font-mono text-xs text-left break-all hover:text-primary hover:underline" :title="`Show details of ${row.key}`" @click="emit('inspect', row.target)">
                       {{ row.key }}
                     </button>
                     <code v-else class="text-xs break-all">{{ row.key }}</code>
-                    <UBadge v-if="row.status === 'added'" label="Added" color="error" variant="subtle" size="sm" class="ms-1.5 align-middle" />
-                    <UBadge v-else-if="row.status === 'removed'" label="Removed" color="success" variant="subtle" size="sm" class="ms-1.5 align-middle" />
+                    <Badge v-if="row.status === 'added'" label="Added" color="error" class="ms-1.5 align-middle" />
+                    <Badge v-else-if="row.status === 'removed'" label="Removed" color="success" class="ms-1.5 align-middle" />
                   </span>
                 </div>
               </td>
@@ -643,5 +640,5 @@ function percent(delta: number, base: number) {
         </tbody>
       </table>
     </div>
-  </UCard>
+  </Card>
 </template>

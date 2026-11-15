@@ -50,7 +50,7 @@ function chunkCount(count: number) {
   <ul class="space-y-1">
     <li v-for="url in sorted" :key="url.url">
       <button class="flex w-full items-baseline gap-3 text-left text-sm hover:text-primary" :aria-expanded="expanded.has(url.url)" @click="toggle(url.url)">
-        <UIcon name="i-lucide-chevron-right" class="size-3.5 shrink-0 self-center text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(url.url) }" />
+        <Icon name="i-lucide-chevron-right" class="size-3.5 shrink-0 self-center text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(url.url) }" />
         <span class="min-w-0 flex-1 truncate font-mono text-xs">{{ url.url }}</span>
         <span class="hidden shrink-0 text-xs text-muted sm:inline">HTML {{ formatBytes(url.html[metric]) }}</span>
         <!-- Adds up to the size: what its HTML preloads from its route, and what the rendered page adds, when it adds any. -->

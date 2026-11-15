@@ -157,26 +157,25 @@ function fileLoadedBy(file: FileRow) {
           ? 'Every file of your project, and the chunks it ends up in.'
           : 'Each chunk is a plot, and each file or package in it a building. Drag to turn, scroll to zoom.' }}
     </p>
-    <UTabs
+    <Segmented
       v-model="groupBy"
+      aria-label="Group"
       :items="[{ label: 'By Chunk', value: 'chunk' }, { label: 'By File', value: 'file' }, { label: '3D', value: 'city' }]"
-      :content="false"
-      size="xs"
     />
   </div>
 
   <ul v-if="groupBy === 'chunk'" class="divide-y divide-default rounded-lg ring ring-default">
     <li v-for="chunk in shownChunks" :id="`chunk-${chunk.file}`" :key="chunk.file" class="scroll-mt-4">
       <button class="flex w-full items-center gap-4 px-4 py-3 text-left hover:bg-elevated/50" :aria-expanded="expanded.has(chunk.file)" @click="toggle(chunk.file)">
-        <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(chunk.file) }" />
+        <Icon name="i-lucide-chevron-right" class="size-4 shrink-0 text-muted transition-transform motion-reduce:transition-none" :class="{ 'rotate-90': expanded.has(chunk.file) }" />
         <div class="min-w-0 flex-1">
           <p class="flex items-center gap-2">
             <span class="truncate font-mono text-sm text-highlighted">{{ chunk.file.split('/').pop() }}</span>
-            <UBadge :label="chunkKindLabels[chunk.kind]" :color="chunk.kind === 'entry' ? 'primary' : 'neutral'" variant="subtle" size="sm" />
+            <Badge :label="chunkKindLabels[chunk.kind]" :color="chunk.kind === 'entry' ? 'primary' : 'neutral'" />
           </p>
           <p v-if="subtitles.get(chunk.file)" class="flex items-center gap-1.5 font-mono text-xs text-muted">
             <FileIcon v-if="subtitles.get(chunk.file)?.file" :path="subtitles.get(chunk.file)!.file!" class="size-3.5" />
-            <UIcon v-else name="i-vscode-icons-file-type-npm" class="size-3.5 shrink-0" aria-hidden="true" />
+            <Icon v-else name="i-vscode-icons-file-type-npm" class="size-3.5 shrink-0" aria-hidden="true" />
             <span class="truncate">{{ subtitles.get(chunk.file)?.text }}</span>
           </p>
         </div>
@@ -224,15 +223,13 @@ function fileLoadedBy(file: FileRow) {
             <span class="truncate">{{ file.id.slice(group.folder.length) }}</span>
           </button>
           <div class="flex shrink-0 flex-wrap justify-end gap-1">
-            <UBadge
+            <Badge
               v-for="chunk in file.chunks"
               :key="chunk.file"
               as="button"
               :label="chunk.file.split('/').pop()"
-              color="neutral"
               variant="outline"
-              size="sm"
-              class="font-mono hover:bg-elevated"
+              class="hover:border-secondary hover:text-secondary"
               :title="`Show ${chunk.file.split('/').pop()} in By Chunk`"
               @click="showChunk(chunk.file)"
             />

@@ -33,7 +33,7 @@ const share = (file: PreloadedFile) => `${Math.max(1, Math.round(file[props.metr
       <div class="flex items-baseline justify-between gap-3 text-sm">
         <!-- A stylesheet on its own is not a chunk the Chunks view lists. -->
         <component :is="file.chunk ? 'button' : 'span'" class="flex min-w-0 items-center gap-2 text-left" :class="{ 'hover:text-primary': file.chunk }" @click="file.chunk && emit('openChunk', file.file)">
-          <UBadge :label="file.chunk ? chunkKindLabels[file.chunk.kind] : 'CSS'" color="neutral" variant="subtle" size="sm" />
+          <Badge :label="file.chunk ? chunkKindLabels[file.chunk.kind] : 'CSS'" />
           <FileIcon v-if="file.chunk?.src" :path="file.chunk.src" class="size-3.5" />
           <span class="truncate font-mono text-xs">{{ file.chunk?.src ?? file.file.split('/').pop() }}</span>
         </component>

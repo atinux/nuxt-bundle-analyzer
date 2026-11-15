@@ -81,7 +81,7 @@ const share = (size: number) => `${Math.max(1, Math.round(size / total.value * 1
         <li v-for="dependency in dependencies" :key="dependency.name">
           <div class="flex items-center justify-between gap-3 text-sm">
             <button class="flex min-w-0 items-center gap-1.5 text-left font-mono text-xs hover:text-primary hover:underline" :title="`Show details of ${dependency.name}`" @click="emit('inspect', { kind: 'package', id: dependency.name, chunk })">
-              <UIcon name="i-vscode-icons-file-type-npm" class="size-3.5 shrink-0" aria-hidden="true" />
+              <Icon name="i-vscode-icons-file-type-npm" class="size-3.5 shrink-0" aria-hidden="true" />
               <span class="truncate">{{ dependency.name }}</span>
             </button>
             <span class="shrink-0 text-muted">

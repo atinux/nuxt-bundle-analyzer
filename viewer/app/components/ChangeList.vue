@@ -76,7 +76,7 @@ function deltaClass(delta: number) {
               :title="targetOf(change.key) ? `Show details of ${change.key}` : change.key"
               @click="targetOf(change.key) && emit('inspect', targetOf(change.key)!)"
             >
-              <UIcon v-if="change.key.startsWith('node_modules/') && sources" name="i-vscode-icons-file-type-npm" class="size-3.5 shrink-0" aria-hidden="true" />
+              <Icon v-if="change.key.startsWith('node_modules/') && sources" name="i-vscode-icons-file-type-npm" class="size-3.5 shrink-0" aria-hidden="true" />
               <FileIcon v-else :path="change.key" class="size-3.5" />
               <span class="break-all">{{ sources && change.key.startsWith('node_modules/') ? change.key.slice('node_modules/'.length) : change.key }}</span>
             </component>

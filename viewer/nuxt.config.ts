@@ -1,9 +1,10 @@
 import process from 'node:process'
+import tailwindcss from '@tailwindcss/vite'
 
 // A single-page app. `nuxt generate` builds the one the package serves with its runs from `/data`;
 // `nuxt build` builds the hosted viewer, which stores the runs GitHub Actions upload.
 export default defineNuxtConfig({
-  modules: ['@nuxt/ui'],
+  modules: ['@ui-sdk/vue', '@nuxt/icon', '@nuxt/fonts'],
   $development: {
     // Run `nuxt-bundle-analyzer` in a project, then point `ANALYZE_SERVER` at the server it starts.
     routeRules: {
@@ -21,14 +22,14 @@ export default defineNuxtConfig({
     },
   },
   css: ['~/assets/css/main.css'],
-  colorMode: { preference: 'dark' },
-  ui: {
-    // Only generate the theme and CSS of the components in use.
-    experimental: { componentDetection: true },
-  },
   // The app is never updated in place, so it has no use for the build manifest.
   experimental: { appManifest: false },
   compatibilityDate: '2026-10-01',
+  vite: {
+    plugins: [
+      tailwindcss(),
+    ],
+  },
   runtimeConfig: {
     oidc: {
       // GitHub Actions' issuer; tests point these at their own.

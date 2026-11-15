@@ -28,7 +28,7 @@ const share = (chunk: ChunkInfo) => `${Math.max(1, Math.round(size(chunk) / tota
     <li v-for="chunk in sorted" :key="chunk.file">
       <div class="flex items-baseline justify-between gap-3 text-sm">
         <button class="flex min-w-0 items-center gap-2 text-left hover:text-primary" @click="emit('openChunk', chunk.file)">
-          <UBadge :label="chunkKindLabels[chunk.kind]" color="neutral" variant="subtle" size="sm" />
+          <Badge :label="chunkKindLabels[chunk.kind]" />
           <FileIcon v-if="chunk.src" :path="chunk.src" class="size-3.5" />
           <span class="truncate font-mono text-xs">{{ chunk.src ?? chunk.file.split('/').pop() }}</span>
         </button>

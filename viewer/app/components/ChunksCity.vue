@@ -178,7 +178,7 @@ const city = computed(() => {
   return { plots, buildings, ghosts }
 })
 
-/** A theme color, which Nuxt UI writes in OKLCH, as three.js reads colors: in sRGB. */
+/** A theme color, in any CSS color syntax the stylesheet uses, as three.js reads colors: in sRGB. */
 function themeColor(name: string, fallback: string) {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = 1
@@ -225,8 +225,6 @@ let dirty = true
 let frame = 0
 let highlighted: number | undefined
 
-const colorMode = useColorMode()
-
 /** Colors every building and plot from the theme, dimming what the search leaves out. */
 function paint() {
   if (!buildingMesh || !plotMesh || !scene) {
@@ -267,19 +265,13 @@ function paint() {
       color.offsetHSL(0, 0, (hash(building.id) - 0.5) * 0.3)
     }
     if (index === highlighted) {
-      color.lerp(new THREE.Color(colorMode.value === 'dark'
-        ? 0xFFFFFF
-        : 0x000000), 0.35)
+      color.lerp(new THREE.Color(0xFFFFFF), 0.35)
     }
     else if (query && !building.id.toLowerCase().includes(query) && !building.chunk.file.toLowerCase().includes(query)) {
       color.lerp(background, 0.82)
     }
     buildingMesh!.setColorAt(index, color)
   })
-  // A light ground needs more of a ghost to show it.
-  ghostMaterial.opacity = colorMode.value === 'dark'
-    ? 0.22
-    : 0.45
   city.value.ghosts.forEach((building, index) => {
     const color = shrank.clone()
     if (query && !building.id.toLowerCase().includes(query) && !building.chunk.file.toLowerCase().includes(query)) {
@@ -552,7 +544,7 @@ onMounted(() => {
 })
 
 watch(city, build)
-watch(() => [props.search, colorMode.value], () => nextTick(paint))
+watch(() => props.search, () => nextTick(paint))
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(frame)
@@ -585,7 +577,7 @@ onBeforeUnmount(() => {
       : `A city of the ${env === 'client' ? 'client' : 'Nitro'} build's ${chunks.length} chunks. The same chunks are listed in By Chunk.`"
     class="relative h-[70vh] min-h-96 overflow-hidden rounded-lg ring ring-default focus-visible:outline-2 focus-visible:outline-primary"
   >
-    <UEmpty
+    <EmptyState
       v-if="unsupported"
       icon="i-lucide-box"
       title="3D Needs WebGL"
