@@ -2,82 +2,105 @@
 @import "tailwindcss";
 @import "@ui-sdk/core/web.css" layer(components);
 
-/* Neon Punk: one dark theme, magenta and cyan tubes glowing on a violet-black grid. */
-:root {
-  color-scheme: dark;
-
-  --neon-magenta: #ff2bd6;
-  --neon-cyan: #00f0ff;
-  --neon-yellow: #f4ff3a;
-  --neon-green: #3dff8f;
-  --neon-red: #ff4d6d;
-
-  --ui-bg: #07040e;
-  --ui-bg-muted: #0d0819;
-  --ui-bg-elevated: #120b22;
-  --ui-bg-accented: #24163f;
-  --ui-text: #e6defa;
-  --ui-text-highlighted: #ffffff;
-  --ui-text-muted: #a898cc;
-  --ui-text-dimmed: #7b6c9e;
-  --ui-success: var(--neon-green);
-  --ui-error: var(--neon-red);
-  --ui-warning: var(--neon-yellow);
-  --ui-chart-1: var(--neon-magenta);
-
-  /* ui-sdk's tokens, which its components read. */
-  --ui-background: var(--ui-bg);
-  --ui-foreground: var(--ui-text);
-  --ui-muted: var(--ui-bg-accented);
-  --ui-muted-foreground: var(--ui-text-muted);
-  --ui-border: #2e1d52;
-  --ui-input: #6a4aa6;
-  --ui-primary: var(--neon-magenta);
-  --ui-primary-foreground: #12001a;
-  --ui-destructive: var(--neon-red);
-  --ui-ring: #00f0ff59;
-  --ui-ring-border: var(--neon-cyan);
-  --ui-overlay: oklch(0.08 0.04 300 / 0.75);
-  --ui-shadow: 0 0 0 1px #ff2bd633, 0 12px 32px -8px #ff2bd640, 0 0 48px -12px #00f0ff33;
-  --ui-radius: 0;
-  --ui-font-size: 0.875rem;
-  --ui-font-sans: var(--font-sans);
-  --ui-font-mono: var(--font-mono);
-
-  --glow-magenta: 0 0 6px #ff2bd6aa, 0 0 18px #ff2bd655;
-  --glow-cyan: 0 0 6px #00f0ffaa, 0 0 18px #00f0ff55;
-}
-
+/* The Nuxt design system (https://nuxt.com/design.md): neutral surfaces, Nuxt green as the one accent,
+   Outfit headings and Inter body, dark by default. */
 @theme static {
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-heading: 'Chakra Petch', var(--font-sans);
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --color-primary: var(--neon-magenta);
-  --color-secondary: var(--neon-cyan);
-  --color-success: var(--ui-success);
-  --color-error: var(--ui-error);
-  --color-warning: var(--ui-warning);
-  /* Sharp corners: chrome is cut, not rounded. Pills and dots keep `rounded-full`. */
-  --radius-xs: 0;
-  --radius-sm: 1px;
-  --radius-md: 2px;
-  --radius-lg: 2px;
-  --radius-xl: 3px;
+  --font-heading: 'Outfit', var(--font-sans);
+  --color-green-50: #EFFDF5;
+  --color-green-100: #D9FBE8;
+  --color-green-200: #B3F5D1;
+  --color-green-300: #75EDAE;
+  --color-green-400: #00DC82;
+  --color-green-500: #00C16A;
+  --color-green-600: #00A155;
+  --color-green-700: #007F45;
+  --color-green-800: #016538;
+  --color-green-900: #0A5331;
+  --color-green-950: #052E16;
 }
 
-/* The names the views were written with under Nuxt UI, such as `text-muted` and `ring-default`. */
+/* Nuxt UI's semantic colors, which the views were written with: light mode takes the 500 shades and
+   dark mode the 400 ones. */
+:root {
+  color-scheme: light;
+  --ui-primary: var(--color-green-500);
+  --ui-success: var(--color-green-500);
+  --ui-warning: var(--color-yellow-500);
+  --ui-error: var(--color-red-500);
+  --ui-text-dimmed: var(--color-neutral-400);
+  --ui-text-muted: var(--color-neutral-500);
+  --ui-text-toned: var(--color-neutral-600);
+  --ui-text: var(--color-neutral-700);
+  --ui-text-highlighted: var(--color-neutral-900);
+  --ui-text-inverted: var(--color-white);
+  --ui-bg: var(--color-white);
+  --ui-bg-muted: var(--color-neutral-50);
+  --ui-bg-elevated: var(--color-neutral-100);
+  --ui-bg-accented: var(--color-neutral-200);
+  --ui-bg-inverted: var(--color-neutral-900);
+  --ui-border: var(--color-neutral-200);
+  --ui-border-accented: var(--color-neutral-300);
+}
+
+.dark {
+  color-scheme: dark;
+  --ui-primary: var(--color-green-400);
+  --ui-success: var(--color-green-400);
+  --ui-warning: var(--color-yellow-400);
+  --ui-error: var(--color-red-400);
+  --ui-text-dimmed: var(--color-neutral-500);
+  --ui-text-muted: var(--color-neutral-400);
+  --ui-text-toned: var(--color-neutral-300);
+  --ui-text: var(--color-neutral-200);
+  --ui-text-highlighted: var(--color-white);
+  --ui-text-inverted: var(--color-neutral-900);
+  --ui-bg: var(--color-neutral-950);
+  --ui-bg-muted: var(--color-neutral-900);
+  --ui-bg-elevated: var(--color-neutral-900);
+  --ui-bg-accented: var(--color-neutral-800);
+  --ui-bg-inverted: var(--color-white);
+  --ui-border: var(--color-neutral-800);
+  --ui-border-accented: var(--color-neutral-700);
+}
+
+/* ui-sdk's tokens, which its components and web.css read. */
+:root {
+  --ui-background: var(--ui-bg);
+  --ui-foreground: var(--ui-text);
+  --ui-muted: var(--ui-bg-elevated);
+  --ui-muted-foreground: var(--ui-text-muted);
+  --ui-input: var(--ui-border-accented);
+  --ui-primary-foreground: var(--ui-text-inverted);
+  --ui-destructive: var(--ui-error);
+  --ui-ring: color-mix(in oklab, var(--ui-primary) 25%, transparent);
+  --ui-ring-border: var(--ui-primary);
+  --ui-overlay: color-mix(in oklab, var(--ui-bg-elevated) 75%, transparent);
+  --ui-radius: 0.375rem;
+  --ui-font-size: 0.875rem;
+  --ui-font-sans: var(--font-sans);
+}
+
 @theme inline {
+  --color-primary: var(--ui-primary);
+  --color-success: var(--ui-success);
+  --color-warning: var(--ui-warning);
+  --color-error: var(--ui-error);
   --text-color-dimmed: var(--ui-text-dimmed);
   --text-color-muted: var(--ui-text-muted);
+  --text-color-toned: var(--ui-text-toned);
   --text-color-default: var(--ui-text);
   --text-color-highlighted: var(--ui-text-highlighted);
+  --text-color-inverted: var(--ui-text-inverted);
   --background-color-default: var(--ui-bg);
   --background-color-muted: var(--ui-bg-muted);
   --background-color-elevated: var(--ui-bg-elevated);
   --background-color-accented: var(--ui-bg-accented);
-  --background-color-inverted: var(--ui-text-highlighted);
+  --background-color-inverted: var(--ui-bg-inverted);
   --border-color-default: var(--ui-border);
+  --border-color-accented: var(--ui-border-accented);
   --ring-color-default: var(--ui-border);
+  --ring-color-accented: var(--ui-border-accented);
   --divide-color-default: var(--ui-border);
   --decoration-color-muted: var(--ui-text-muted);
 }
@@ -88,30 +111,21 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  html,
   body {
-    min-height: 100dvh;
-    background-color: var(--ui-bg);
-    /* Two tubes of light off-screen and a faint grid under everything. */
-    background-image:
-      radial-gradient(60rem 30rem at 0% 0%, #ff2bd61f, transparent 70%),
-      radial-gradient(50rem 30rem at 100% 100%, #00f0ff14, transparent 70%),
-      linear-gradient(#ffffff06 1px, transparent 1px),
-      linear-gradient(90deg, #ffffff06 1px, transparent 1px);
-    background-size: auto, auto, 32px 32px, 32px 32px;
-    background-attachment: fixed;
-    color: var(--ui-text);
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
+    overflow-x: clip;
   }
 
-  /* Scanlines over the whole screen, below anything that floats. */
-  body::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: 5;
-    pointer-events: none;
-    background: repeating-linear-gradient(to bottom, #0000 0 2px, #0000001a 2px 3px);
+  @media (pointer: fine) and (not (any-pointer: coarse)) {
+    html {
+      overscroll-behavior-y: none;
+    }
+  }
+
+  body {
+    background: var(--ui-bg);
+    color: var(--ui-text);
+    -webkit-font-smoothing: antialiased;
   }
 
   /* Taps fire at once, without waiting to rule out a double-tap zoom. */
@@ -124,23 +138,17 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--neon-cyan);
+    outline: 2px solid var(--ui-primary);
     outline-offset: 2px;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
-    font-weight: var(--font-weight-semibold);
-    letter-spacing: 0.02em;
-  }
-
-  ::selection {
-    background: var(--neon-magenta);
-    color: var(--ui-primary-foreground);
+    font-weight: var(--font-weight-medium) !important;
   }
 }
 
-/* web.css draws its own look; these keep its parts in the same neon as the views. */
+/* Adjustments to web.css, so its parts match Nuxt UI's. */
 @layer components {
   /* web.css underlines every link; the views style their own, and links drawn as buttons keep its colors. */
   a:not([data-slot]) {
@@ -153,99 +161,79 @@
     background: none;
   }
 
+  /* View switches are neutral, as `UTabs` with `color="neutral"`. */
   [data-slot="segmented-control"] {
-    padding: 2px;
-    border: 1px solid var(--ui-border);
-    background: var(--ui-bg-muted);
+    padding: 0.25rem;
+    border: 0;
+    border-radius: calc(var(--ui-radius) * 1.33);
+    background: var(--ui-bg-elevated);
   }
 
   [data-slot="segmented-control-item"] {
     gap: 0.375rem;
-    padding-inline: calc(var(--ui-spacing) * 2.5);
-    font-family: var(--font-heading);
-    font-size: 0.8125rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    height: 1.75rem;
+    padding-inline: 0.5rem;
+    font-size: 0.75rem;
 
     &[data-checked] {
-      color: var(--ui-primary-foreground);
+      color: var(--ui-text-inverted);
     }
   }
 
   [data-slot="segmented-control-indicator"] {
-    background: var(--neon-magenta);
-    box-shadow: var(--glow-magenta);
+    border: 0;
+    background: var(--ui-bg-inverted);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
+  }
+
+  /* The size of Nuxt UI's `sm` select and input. */
+  :is([data-slot="select-trigger"], [data-slot="input"], [data-slot="select-content"]) {
+    font-size: 0.75rem;
   }
 
   :is([data-slot="select-trigger"], [data-slot="input"]) {
-    background: var(--ui-bg-muted);
-
-    &:hover:not([data-disabled]) {
-      border-color: var(--neon-magenta);
-    }
-  }
-
-  :is([data-slot="select-trigger"], [data-slot="input"]):is(:focus-visible, [data-open]) {
-    box-shadow: var(--glow-cyan);
-  }
-
-  [data-slot="select-item"][data-selected] {
-    color: var(--neon-magenta);
+    height: 2rem;
   }
 
   :is([data-slot="button"], [data-slot="drawer-close"]) {
-    font-family: var(--font-heading);
+    border-color: transparent;
+    background: var(--ui-bg-elevated);
     text-decoration: none;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    box-shadow: inset 0 0 0 1px var(--ui-border-accented);
 
     &:hover:not([data-disabled]) {
-      border-color: var(--neon-cyan);
-      background: #00f0ff14;
-      color: var(--ui-text-highlighted);
-      box-shadow: var(--glow-cyan);
+      background: var(--ui-bg-accented);
     }
 
     &[data-variant="solid"] {
-      box-shadow: var(--glow-magenta);
+      background: var(--ui-primary);
+      color: var(--ui-primary-foreground);
+      box-shadow: none;
 
       &:hover:not([data-disabled]) {
-        border-color: var(--neon-magenta);
-        background: #ff5ee0;
-        color: var(--ui-primary-foreground);
-        box-shadow: 0 0 10px #ff2bd6, 0 0 32px #ff2bd677;
+        background: color-mix(in oklab, var(--ui-primary) 75%, var(--ui-bg));
       }
     }
 
     &[data-variant="ghost"] {
-      border-color: transparent;
       background: transparent;
+      color: var(--ui-text-muted);
       box-shadow: none;
+
+      &:hover:not([data-disabled]) {
+        background: var(--ui-bg-elevated);
+        color: var(--ui-text-highlighted);
+      }
     }
   }
 
-  [data-slot="drawer-backdrop"] {
-    background: var(--ui-overlay);
-    backdrop-filter: blur(2px);
-  }
-
   [data-slot="drawer-content"] {
-    border-inline-start: 1px solid var(--neon-magenta);
-    background: var(--ui-bg-muted);
-    box-shadow: -8px 0 40px -8px #ff2bd655;
+    border-inline-start: 1px solid var(--ui-border);
+    background: var(--ui-bg);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 
     &:focus-visible {
       outline: none;
     }
   }
-}
-
-@utility neon-text {
-  color: var(--ui-text-highlighted);
-  text-shadow: 0 0 4px #fff8, 0 0 12px var(--neon-magenta), 0 0 28px #ff2bd688;
-}
-
-/* A panel's top edge lit like a tube. */
-@utility neon-edge {
-  box-shadow: inset 0 1px 0 #ff2bd666, 0 -1px 12px -6px #ff2bd699;
 }

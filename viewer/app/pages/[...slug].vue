@@ -355,26 +355,29 @@ const metricItems: SegmentedItem<Metric>[] = [
   <!-- On phones the page scrolls as a document rather than inside the main area, so the browser can
        collapse its toolbar and the footer clears floating bars such as Arc's. -->
   <div class="flex h-dvh flex-col max-sm:h-auto">
-    <header class="relative z-10 shrink-0 border-b border-primary/40 bg-default/85 shadow-[0_1px_24px_-8px_var(--neon-magenta)] backdrop-blur-md">
+    <header class="relative z-10 shrink-0 bg-default">
       <div class="flex h-16 items-center justify-between gap-1.5 border-b border-default px-4 sm:px-6">
-        <h1 class="flex min-w-0 items-center gap-1.5 text-lg">
-          <NuxtLink to="/" aria-label="Bundle Analyzer home" class="neon-text flex shrink-0 items-center gap-2 uppercase" @click="openHome">
-            <img src="/favicon.svg" alt="Nuxt" class="size-6 drop-shadow-[0_0_6px_var(--neon-cyan)]">
+        <h1 class="flex min-w-0 items-center gap-1.5 text-highlighted">
+          <NuxtLink to="/" aria-label="Bundle Analyzer home" class="flex shrink-0 items-center gap-1.5" @click="openHome">
+            <img src="/favicon.svg" alt="Nuxt" class="size-6">
             Bundle Analyzer
           </NuxtLink>
           <!-- Narrow screens keep the pull request's number, so it stays clear which one this is. -->
-          <NuxtLink v-if="pull && pullLink" :to="pullLink.to" target="_blank" :aria-label="`Pull request ${pullLink.label} on GitHub`" class="ms-1 flex items-center gap-1 font-sans text-sm font-normal tracking-normal text-muted hover:text-secondary">
+          <NuxtLink v-if="pull && pullLink" :to="pullLink.to" target="_blank" :aria-label="`Pull request ${pullLink.label} on GitHub`" class="ms-1 flex items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
             <Icon name="i-lucide-git-pull-request" class="size-4 shrink-0" aria-hidden="true" />
             <span class="sm:hidden">#{{ pull.pull }}</span>
             <span class="max-sm:hidden">{{ pullLink.label }}</span>
           </NuxtLink>
-          <NuxtLink v-if="branch && branchLink" :to="branchLink.to" target="_blank" :aria-label="`Branch ${branch.branch} of ${branchLink.label} on GitHub`" class="ms-1 flex min-w-0 items-center gap-1 font-sans text-sm font-normal tracking-normal text-muted hover:text-secondary">
+          <NuxtLink v-if="branch && branchLink" :to="branchLink.to" target="_blank" :aria-label="`Branch ${branch.branch} of ${branchLink.label} on GitHub`" class="ms-1 flex min-w-0 items-center gap-1 font-sans text-sm font-normal text-muted hover:text-highlighted">
             <Icon name="i-lucide-git-branch" class="size-4 shrink-0" aria-hidden="true" />
             <span class="max-sm:hidden">{{ branchLink.label }}</span>
             <span class="truncate">{{ branch.branch }}</span>
           </NuxtLink>
         </h1>
-        <Segmented v-if="!empty" v-model="state.view" :items="viewItems" aria-label="View" class="max-sm:hidden" />
+        <div class="flex items-center gap-1.5">
+          <Segmented v-if="!empty" v-model="state.view" :items="viewItems" aria-label="View" class="max-sm:hidden" />
+          <ColorModeButton />
+        </div>
       </div>
 
       <!-- Narrow screens give the views a row of their own, so the title keeps its room. -->
@@ -383,11 +386,11 @@ const metricItems: SegmentedItem<Metric>[] = [
       </div>
 
       <!-- The controls wrap on narrow screens instead of scrolling out of view. -->
-      <div v-if="!empty" class="flex flex-wrap items-center justify-between gap-1.5 gap-y-2 px-4 py-2 sm:px-6">
+      <div v-if="!empty" class="flex flex-wrap items-center justify-between gap-1.5 gap-y-2 border-b border-default px-4 py-2 sm:px-6">
         <div class="flex flex-wrap items-center gap-1.5 gap-y-2">
           <template v-if="state.view === 'compare'">
             <RunSelect v-model="state.base" :items="runItems" aria-label="Base run" />
-            <Icon name="i-lucide-arrow-right" class="size-4 shrink-0 text-secondary" aria-hidden="true" />
+            <Icon name="i-lucide-arrow-right" class="size-4 shrink-0 text-muted" aria-hidden="true" />
           </template>
           <!-- History shows every commit, so it has no run to pick. -->
           <RunSelect v-if="state.view !== 'history'" v-model="state.run" :items="runItems" aria-label="Run" />
@@ -413,12 +416,12 @@ const metricItems: SegmentedItem<Metric>[] = [
           {{ pull ? `Loading the comparison of #${pull.pull}…` : branch ? (state.view === 'history' ? `Loading the history of ${branch.branch}…` : `Loading the analysis of ${runs.find(run => run.slug === state.run)?.name ?? branch.branch}…`) : 'Loading the analysis…' }}
         </p>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div v-for="card in 2" :key="card" class="h-24 animate-pulse bg-accented/60 motion-reduce:animate-none" />
+          <div v-for="card in 2" :key="card" class="h-24 animate-pulse rounded-lg bg-elevated motion-reduce:animate-none" />
         </div>
-        <div class="divide-y divide-default border border-default">
+        <div class="divide-y divide-default rounded-lg ring ring-default">
           <div v-for="row in 8" :key="row" class="flex items-center gap-4 px-4 py-3">
-            <div class="h-4 animate-pulse bg-accented/60 motion-reduce:animate-none" :style="{ width: `${[45, 30, 38, 52, 26, 41, 33, 48][row - 1]}%` }" />
-            <div class="ms-auto h-4 w-16 animate-pulse bg-accented/60 motion-reduce:animate-none" />
+            <div class="h-4 animate-pulse rounded-md bg-elevated motion-reduce:animate-none" :style="{ width: `${[45, 30, 38, 52, 26, 41, 33, 48][row - 1]}%` }" />
+            <div class="ms-auto h-4 w-16 animate-pulse rounded-md bg-elevated motion-reduce:animate-none" />
           </div>
         </div>
       </div>
@@ -513,7 +516,7 @@ const metricItems: SegmentedItem<Metric>[] = [
 
       <p class="mt-auto flex items-center justify-center gap-1.5 pt-6 text-xs text-muted">
         Powered by
-        <NuxtLink to="https://sonda.dev" target="_blank" class="flex items-center gap-1 font-medium text-muted hover:text-secondary">
+        <NuxtLink to="https://sonda.dev" target="_blank" class="flex items-center gap-1 font-medium text-muted hover:text-highlighted">
           <img src="/sonda.svg" alt="" class="size-3.5 rounded-xs">
           Sonda
         </NuxtLink>

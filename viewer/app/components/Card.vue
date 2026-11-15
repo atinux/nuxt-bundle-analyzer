@@ -6,8 +6,8 @@ defineProps<{
 </script>
 
 <template>
-  <section class="neon-edge border border-default bg-elevated/70 backdrop-blur-sm">
-    <header v-if="$slots.header" class="border-b border-default px-4 py-3" :class="headerClass">
+  <section class="divide-y divide-default rounded-lg bg-default ring ring-default">
+    <header v-if="$slots.header" class="px-4 py-3" :class="headerClass">
       <slot name="header" />
     </header>
     <div :class="bodyClass">

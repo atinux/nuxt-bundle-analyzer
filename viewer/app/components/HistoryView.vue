@@ -291,7 +291,7 @@ function date(run: Run) {
             <!-- The message takes the room left and truncates, so phones keep the change in view. -->
             <td class="w-full max-w-0 px-4 py-2">
               <div class="flex items-center gap-2">
-                <NuxtLink :to="commitUrl(row.sha)" target="_blank" class="shrink-0 font-mono text-xs text-muted hover:text-secondary" :aria-label="`Commit ${row.short} on GitHub`">
+                <NuxtLink :to="commitUrl(row.sha)" target="_blank" class="shrink-0 font-mono text-xs text-muted hover:text-highlighted" :aria-label="`Commit ${row.short} on GitHub`">
                   {{ row.short }}
                 </NuxtLink>
                 <span class="min-w-0 flex-1 truncate" :title="row.message">{{ row.message || '—' }}</span>

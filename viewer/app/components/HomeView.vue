@@ -35,8 +35,8 @@ async function copy(text: string) {
 
 <template>
   <div class="mx-auto w-full max-w-3xl py-8 sm:py-14">
-    <Badge label="Experimental" color="primary" />
-    <h2 class="neon-text mt-4 text-3xl text-balance uppercase sm:text-5xl">
+    <Badge label="Experimental" />
+    <h2 class="mt-4 text-3xl text-balance text-highlighted sm:text-4xl">
       See What Your Nuxt App Ships
     </h2>
     <p class="mt-3 text-lg text-pretty text-muted">
@@ -58,7 +58,7 @@ async function copy(text: string) {
     <ol class="mt-12 space-y-8">
       <!-- On phones the text and commands take the full width below the step's number and title. -->
       <li v-for="(step, index) in steps" :key="step.title" class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 sm:gap-x-4">
-        <span class="flex size-7 items-center justify-center border border-secondary/70 font-mono text-sm text-secondary shadow-[0_0_12px_-2px_var(--neon-cyan)]">
+        <span class="flex size-7 items-center justify-center rounded-full bg-elevated text-sm font-medium text-highlighted ring ring-default">
           {{ index + 1 }}
         </span>
         <h3 class="text-base font-medium text-highlighted">
@@ -68,7 +68,7 @@ async function copy(text: string) {
           <p class="mt-1 text-sm text-pretty text-muted">
             {{ step.description }}
           </p>
-          <div v-for="command in step.commands" :key="command" class="mt-2 flex items-center gap-2 border border-default bg-muted py-1 ps-3 pe-1">
+          <div v-for="command in step.commands" :key="command" class="mt-2 flex items-center gap-2 rounded-md bg-elevated/60 py-1 ps-3 pe-1 ring ring-default">
             <code class="min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap text-highlighted sm:text-sm">{{ command }}</code>
             <Button
               :aria-label="copied === command ? 'Copied' : `Copy ${command}`"
@@ -79,7 +79,7 @@ async function copy(text: string) {
               <Icon :name="copied === command ? 'i-lucide-check' : 'i-lucide-copy'" class="size-4" aria-hidden="true" />
             </Button>
           </div>
-          <NuxtLink v-if="step.link" :to="step.link.to" target="_blank" class="mt-2 inline-flex items-center gap-1 font-heading text-sm tracking-wide text-secondary uppercase hover:underline">
+          <NuxtLink v-if="step.link" :to="step.link.to" target="_blank" class="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-highlighted">
             {{ step.link.label }}
             <Icon name="i-lucide-arrow-up-right" class="size-4" aria-hidden="true" />
           </NuxtLink>

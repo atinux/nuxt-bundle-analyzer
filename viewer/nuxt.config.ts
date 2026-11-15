@@ -4,7 +4,12 @@ import tailwindcss from '@tailwindcss/vite'
 // A single-page app. `nuxt generate` builds the one the package serves with its runs from `/data`;
 // `nuxt build` builds the hosted viewer, which stores the runs GitHub Actions upload.
 export default defineNuxtConfig({
-  modules: ['@ui-sdk/vue', '@nuxt/icon', '@nuxt/fonts'],
+  modules: [
+    '@ui-sdk/vue',
+    '@nuxt/icon',
+    '@nuxt/fonts',
+    '@nuxtjs/color-mode',
+  ],
   $development: {
     // Run `nuxt-bundle-analyzer` in a project, then point `ANALYZE_SERVER` at the server it starts.
     routeRules: {
@@ -15,6 +20,7 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   app: {
     head: {
+      htmlAttrs: { lang: 'en' },
       title: 'Nuxt Bundle Analyzer',
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
@@ -22,6 +28,8 @@ export default defineNuxtConfig({
     },
   },
   css: ['~/assets/css/main.css'],
+  // Dark by default, as on nuxt.com, with a button to switch. The class matches the `.dark` rules in `main.css`.
+  colorMode: { preference: 'dark', classSuffix: '' },
   // The app is never updated in place, so it has no use for the build manifest.
   experimental: { appManifest: false },
   compatibilityDate: '2026-10-01',

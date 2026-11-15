@@ -158,7 +158,7 @@ function tooltipRows(points: readonly ChartPoint<Row>[], primary: ChartPoint<Row
     :on-select="point => emit('select', point)"
   >
     <template #tooltipBody="context">
-      <div class="border border-primary/60 bg-default/95 px-2.5 py-1.5 shadow-[0_0_24px_-6px_var(--neon-magenta)]">
+      <div class="rounded-md bg-default px-2.5 py-1.5 shadow-sm ring ring-default">
         <slot name="tooltip" :rows="tooltipRows(context.points, context.primaryPoint)" />
       </div>
     </template>

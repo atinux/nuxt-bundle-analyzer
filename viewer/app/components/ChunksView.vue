@@ -229,7 +229,7 @@ function fileLoadedBy(file: FileRow) {
               as="button"
               :label="chunk.file.split('/').pop()"
               variant="outline"
-              class="hover:border-secondary hover:text-secondary"
+              class="font-mono hover:bg-elevated"
               :title="`Show ${chunk.file.split('/').pop()} in By Chunk`"
               @click="showChunk(chunk.file)"
             />
