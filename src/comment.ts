@@ -53,7 +53,7 @@ function code(name: string) {
 }
 
 /** Sizes as numbers, as the reports could hold anything. */
-function bytes(value: unknown) {
+export function bytes(value: unknown) {
   const number = Number(value)
   return Number.isFinite(number)
     ? number
