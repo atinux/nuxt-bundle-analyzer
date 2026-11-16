@@ -23,6 +23,7 @@ https://github.com/user-attachments/assets/db6b95b7-0e33-4a54-9a60-69192bb6becf
 - **Compare two builds:** the difference for each route, package, and file, as tables or as a 3D city colored by what changed.
 - **[Pull request comparisons](#comparisons-on-pull-requests):** GitHub Actions uploads both builds to a hosted viewer, so a bot comment can link to the comparison. The repository needs no secret.
 - **[Branch history](#history-of-a-branch):** GitHub Actions uploads a build of each commit pushed to a branch. The hosted viewer charts the size after each commit, and you can open what any commit changed.
+- **[Metrics for other tools](#metrics-for-other-tools):** the sizes of a build in the Prometheus format, for GitLab's merge request metrics, or for github-action-benchmark.
 - **Raw, gzip, and Brotli:** switch any view between the size on disk and the size after compression.
 - **Shareable views:** the URL keeps the whole view, so you can reload it or send it to someone.
 
@@ -202,6 +203,74 @@ jobs:
 ```
 
 The upload sends the run with the commit's SHA (`--sha`, `GITHUB_SHA` by default), and the message and time git has for it, which order the history. To add earlier commits, run the same steps on each of them, for example from a `workflow_dispatch` workflow with a matrix of SHAs, checking out each one and passing `--sha`. Uploading a commit again replaces its run.
+
+## Metrics for other tools
+
+`metrics` writes the sizes of a run for other tools to track:
+
+```bash
+npx nuxt-bundle-analyzer --name=ci --no-serve
+npx nuxt-bundle-analyzer metrics --name=ci --output=metrics.txt
+```
+
+`--reporter` picks the format:
+
+- `prometheus` (default): the [Prometheus text format](https://prometheus.io/docs/instrumenting/exposition_formats/), which GitLab's merge request metrics and Pushgateway read.
+- `github-action-benchmark`: the JSON of [github-action-benchmark](https://github.com/benchmark-action/github-action-benchmark)'s `customSmallerIsBetter` tool, `[{ name, unit, value }]`.
+
+`--metrics` picks the groups of metrics, comma-separated. All are written except `packages`, which has one metric per package:
+
+| Group | Prometheus metric | Size of |
+| --- | --- | --- |
+| `totals` | `nuxt_bundle_bytes{bundle}` | The client or server build. |
+| `totals` | `nuxt_bundle_origin_bytes{bundle,origin}` | The build's own code (`app`) and its `dependencies`. |
+| `types` | `nuxt_client_assets_bytes{type}` | The client build's `js` and `css` files, and its other files (`asset`) when it has some. |
+| `routes` | `nuxt_route_initial_bytes{route}` | The JavaScript and CSS a route loads before it renders. |
+| `urls` | `nuxt_url_initial_bytes{url}`, `nuxt_url_html_bytes{url}` | What the HTML of each URL passed with [`--urls`](#prerendered-urls) preloads, and the HTML. |
+| `packages` | `nuxt_package_bytes{bundle,package}` | Each package in the client or server build. |
+
+Each size is written uncompressed, gzipped, and with Brotli, in a `compression` label. `--compression=brotli` writes only one of them.
+
+On GitLab, the merge request widget compares the report with the latest one of the target branch, so run the job on that branch's pipelines too:
+
+```yaml
+bundle-size:
+  script:
+    # Install the app's dependencies, then:
+    - npx nuxt-bundle-analyzer --name=ci --no-serve
+    - npx nuxt-bundle-analyzer metrics --name=ci --output=metrics.txt
+  artifacts:
+    reports:
+      metrics: metrics.txt
+```
+
+github-action-benchmark charts each metric over the commits of a branch. It keeps the history on the repository's `gh-pages` branch, and `auto-push` pushes it there:
+
+```yaml
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  bundle-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Install the app's dependencies, then:
+      - run: npx nuxt-bundle-analyzer --name=main --no-serve
+      - run: npx nuxt-bundle-analyzer metrics --name=main --reporter=github-action-benchmark --compression=brotli --output=bundle-size.json
+      - uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Bundle size
+          tool: customSmallerIsBetter
+          output-file-path: bundle-size.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+```
 
 ## Hosting the viewer
 

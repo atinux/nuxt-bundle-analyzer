@@ -8,6 +8,7 @@ import { join, resolve } from 'pathe'
 
 import { readRunData, renderComment } from './comment'
 import { findPullRequest, postComment } from './github'
+import { COMPRESSIONS, DEFAULT_METRIC_GROUPS, METRIC_GROUPS, renderMetrics, REPORTERS } from './metrics'
 import bundleAnalyzer from './module'
 import { defaultRunsDir, toSlug } from './runs'
 import { serve } from './serve'
@@ -20,9 +21,12 @@ Commands:
   serve     Open the analyzer on the runs already written
   upload    Send runs to a hosted viewer from GitHub Actions
   comment   Write a pull request comment comparing two runs, in Markdown
+  metrics   Write the sizes of a run for other tools, such as GitLab's merge request metrics
+
+Options for analyze and metrics:
+  --name <name>        Name of the run, to keep several and compare them (default: default)
 
 Options for analyze:
-  --name <name>        Name of the run, to keep several and compare them (default: default)
   --no-serve           Write the reports without opening the analyzer
   --urls <urls>        Render these URLs, such as /,/blog/hello-world, and record what each
                        one's HTML preloads (comma-separated, repeatable)
@@ -33,8 +37,10 @@ Options for analyze and serve:
   --port <port>          Port of the analyzer (default: PORT or 3000)
   --allowed-host <host>  Also answer this host, such as a tunnel; a leading dot allows subdomains (repeatable)
 
-Options for upload and comment:
+Options for upload, comment and metrics:
   --runs <dir>      Directory with one directory per run (default: node_modules/.cache/nuxt-bundle-analyzer)
+
+Options for upload and comment:
   --base <name>     Run to compare against (default: base)
   --head <name>     Run with the change (default: pr)
   --pr <number>     Pull request the comparison is for (default: the one of the GitHub Actions
@@ -48,9 +54,17 @@ Options for upload:
 
 Options for comment:
   --link <url>      Comparison on the hosted viewer, the url upload prints, to lead the comment
-  --output <file>   Write the comment to this file instead of printing it
   --post            Post the comment on the pull request with GITHUB_TOKEN, or update the one
                     posted before
+
+Options for comment and metrics:
+  --output <file>   Write the comment or metrics to this file instead of printing them
+
+Options for metrics:
+  --reporter <name>      prometheus or github-action-benchmark (default: prometheus)
+  --metrics <groups>     ${METRIC_GROUPS.join(', ')}, comma-separated
+                         (default: ${DEFAULT_METRIC_GROUPS.join(',')})
+  --compression <names>  ${COMPRESSIONS.join(', ')}, comma-separated (default: all)
 `
 
 const { values, positionals } = parseArgs({
@@ -77,6 +91,9 @@ const { values, positionals } = parseArgs({
     'link': { type: 'string' },
     'output': { type: 'string' },
     'post': { type: 'boolean', default: false },
+    'reporter': { type: 'string', default: 'prometheus' },
+    'metrics': { type: 'string' },
+    'compression': { type: 'string' },
     'help': { type: 'boolean', short: 'h' },
   },
 })
@@ -86,6 +103,7 @@ const COMMANDS = [
   'serve',
   'upload',
   'comment',
+  'metrics',
 ]
 const command = COMMANDS.includes(positionals[0] ?? '')
   ? positionals.shift()!
@@ -112,6 +130,18 @@ const runsDir = values.runs
   ? resolve(values.runs)
   : defaultRunsDir(rootDir)
 const uiDir = fileURLToPath(new URL('./ui/', import.meta.url))
+
+/** The values of an option, each of which must be one of `allowed`. */
+function oneOf<T extends string>(option: string, list: string[], allowed: readonly T[]): T[] {
+  const values = list.map(value => value.trim()).filter(Boolean)
+  const unknown = values.find(value => !allowed.includes(value as T))
+  if (unknown !== undefined || values.length === 0) {
+    throw new Error(`${option} takes ${allowed.join(', ')}${unknown === undefined
+      ? ''
+      : `, not ${unknown}`}.`)
+  }
+  return values as T[]
+}
 
 /** The `@nuxt/kit` of the project's Nuxt, so the build uses the versions the project does. */
 async function loadKit(): Promise<typeof import('@nuxt/kit')> {
@@ -267,6 +297,25 @@ async function main() {
     // The run's summary keeps the report too, also when commenting is not allowed.
     if (process.env.GITHUB_STEP_SUMMARY) {
       appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown)
+    }
+    return
+  }
+  if (command === 'metrics') {
+    const options = {
+      reporter: oneOf('--reporter', [values.reporter], REPORTERS)[0],
+      groups: values.metrics === undefined
+        ? undefined
+        : oneOf('--metrics', values.metrics.split(','), METRIC_GROUPS),
+      compressions: values.compression === undefined
+        ? undefined
+        : oneOf('--compression', values.compression.split(','), COMPRESSIONS),
+    }
+    const metrics = renderMetrics(await readRunData(join(runsDir, toSlug(values.name))), options)
+    if (values.output) {
+      writeFileSync(values.output, metrics)
+    }
+    else {
+      process.stdout.write(metrics)
     }
     return
   }
