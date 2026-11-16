@@ -65,7 +65,8 @@ function capitalize(text: string) {
 export function collectMetrics(data: RunData, { groups = DEFAULT_METRIC_GROUPS, compressions = COMPRESSIONS }: MetricsOptions = {}): Sample[] {
   const samples: Sample[] = []
   const add = (name: string, labels: Record<string, string>, sizes: Sizes, title: string) => {
-    for (const compression of compressions) {
+    // A compression listed twice would write the same sample twice, which Prometheus doesn't allow.
+    for (const compression of new Set(compressions)) {
       samples.push({
         name,
         labels: { ...labels, compression },
@@ -160,10 +161,13 @@ function labelValue(value: string) {
 function renderPrometheus(samples: Sample[]) {
   const byName = new Map<string, Sample[]>()
   for (const sample of samples) {
-    byName.set(sample.name, [
-      ...byName.get(sample.name) ?? [],
-      sample,
-    ])
+    const list = byName.get(sample.name)
+    if (list) {
+      list.push(sample)
+    }
+    else {
+      byName.set(sample.name, [sample])
+    }
   }
   const lines: string[] = []
   for (const [name, list] of byName) {

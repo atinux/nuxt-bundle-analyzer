@@ -244,16 +244,32 @@ bundle-size:
       metrics: metrics.txt
 ```
 
-With github-action-benchmark, which charts each metric over the commits of a branch:
+github-action-benchmark charts each metric over the commits of a branch. It keeps the history on the repository's `gh-pages` branch, and `auto-push` pushes it there:
 
 ```yaml
-- run: npx nuxt-bundle-analyzer --name=main --no-serve
-- run: npx nuxt-bundle-analyzer metrics --name=main --reporter=github-action-benchmark --compression=brotli --output=bundle-size.json
-- uses: benchmark-action/github-action-benchmark@v1
-  with:
-    name: Bundle size
-    tool: customSmallerIsBetter
-    output-file-path: bundle-size.json
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  bundle-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Install the app's dependencies, then:
+      - run: npx nuxt-bundle-analyzer --name=main --no-serve
+      - run: npx nuxt-bundle-analyzer metrics --name=main --reporter=github-action-benchmark --compression=brotli --output=bundle-size.json
+      - uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Bundle size
+          tool: customSmallerIsBetter
+          output-file-path: bundle-size.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
 ```
 
 ## Hosting the viewer

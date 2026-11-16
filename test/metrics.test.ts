@@ -148,10 +148,13 @@ describe('renderMetrics', () => {
     ])
   })
 
-  it('keeps the samples of each metric together, after its HELP and TYPE', () => {
+  it('writes each sample once, keeping the samples of each metric together after its HELP and TYPE', () => {
     const lines = renderMetrics(run(), {
       groups: ['totals', 'packages'],
+      // As with `--compression=gzip,gzip,brotli`.
+      compressions: ['gzip', 'gzip', 'brotli'],
     }).trimEnd().split('\n')
+    expect(new Set(lines).size).toBe(lines.length)
     const typed: string[] = []
     for (const line of lines) {
       const type = /^# TYPE (\w+) gauge$/.exec(line)
